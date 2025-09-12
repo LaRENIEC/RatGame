@@ -1,0 +1,178 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Archivos de origen">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Archivos de encabezado">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Archivos de recursos">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Archivos de origen\Player">
+      <UniqueIdentifier>{f06fda4b-f5ba-4364-ade2-dcc776a62834}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Archivos de origen\GameUI">
+      <UniqueIdentifier>{a86a8933-1b6b-4aa9-9c85-cbb372c50b04}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Archivos de origen\Levels">
+      <UniqueIdentifier>{5f128c29-006a-4e9a-8d22-7e90709f9c1c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Archivos de origen\Entitys">
+      <UniqueIdentifier>{9eb6f6d5-d9d5-4ea8-a983-aab280b6f127}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Archivos de origen\Weapons">
+      <UniqueIdentifier>{0c57e188-d450-4aef-99a5-967be4925806}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="RatGame.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="Player.h">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="Input.h">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="GameMovement.h">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="Menu.h">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClInclude>
+    <ClInclude Include="TextureManager.h">
+      <Filter>Archivos de origen</Filter>
+    </ClInclude>
+    <ClInclude Include="Weapon.h">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClInclude>
+    <ClInclude Include="Pistol.h">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClInclude>
+    <ClInclude Include="Shotgun.h">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClInclude>
+    <ClInclude Include="Level.h">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClInclude>
+    <ClInclude Include="PlayerSprite.h">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="Entity.h">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClInclude>
+    <ClInclude Include="Enemy.h">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClInclude>
+    <ClInclude Include="Boss.h">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClInclude>
+    <ClInclude Include="CommonTypes.h">
+      <Filter>Archivos de origen</Filter>
+    </ClInclude>
+    <ClInclude Include="GameUI.h">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClInclude>
+    <ClInclude Include="MaterialTextures.h">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClInclude>
+    <ClInclude Include="LevelEditor.h">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClInclude>
+    <ClInclude Include="UIManager.h">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClInclude>
+    <ClInclude Include="level1.h">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClInclude>
+    <ClInclude Include="hud.h">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="RatGame.cpp">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
+    <ClCompile Include="GameMovement.cpp">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="Menu.cpp">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClCompile>
+    <ClCompile Include="TextureManager.cpp">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
+    <ClCompile Include="Player.cpp">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="Weapon.cpp">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClCompile>
+    <ClCompile Include="Pistol.cpp">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClCompile>
+    <ClCompile Include="Shotgun.cpp">
+      <Filter>Archivos de origen\Weapons</Filter>
+    </ClCompile>
+    <ClCompile Include="Level.cpp">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClCompile>
+    <ClCompile Include="PlayerSprite.cpp">
+      <Filter>Archivos de origen\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="Entity.cpp">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClCompile>
+    <ClCompile Include="Enemy.cpp">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClCompile>
+    <ClCompile Include="Boss.cpp">
+      <Filter>Archivos de origen\Entitys</Filter>
+    </ClCompile>
+    <ClCompile Include="GameUI.cpp">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClCompile>
+    <ClCompile Include="MaterialTextures.cpp">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClCompile>
+    <ClCompile Include="LevelEditor.cpp">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClCompile>
+    <ClCompile Include="UIManager.cpp">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClCompile>
+    <ClCompile Include="level1.cpp">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClCompile>
+    <ClCompile Include="hud.cpp">
+      <Filter>Archivos de origen\GameUI</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="RatGame.rc">
+      <Filter>Archivos de recursos</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="small.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="RatGame.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+  </ItemGroup>
+</Project>
