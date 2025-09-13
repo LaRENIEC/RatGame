@@ -86,24 +86,34 @@ void PlayerSprite::Update(float dt, const Player& player) {
             m_eyeOpenLeft = m_eyeOpenRight = (m_blinkTimer < 0.12f) ? 0.0f : 1.0f;
             m_mouthOpen = 0.0f;
         }
-        // --- face offset (mira hacia donde camina) ---
-        const float MOVE_THRESHOLD = 20.0f;   // px/s -> cuando empezar a mover la cara
-        const float MAX_MOVE_REF = 220.0f;    // referencia para normalizar velocidad
-        float targetFace = 0.0f;
+        // --- calcular desplazamiento de la cara mezclando movimiento y apuntado ---
+        // aproximación al half-width del body (igual que en Draw)
+        float approxBodyHalf = 28.0f * m_scale * m_bodyScale;
+        // desplazamiento máximo por apuntado (en px)
+        const float FACE_SHIFT_MAX_AIM = approxBodyHalf * 0.45f;
+        // desplazamiento por movimiento (como antes, pero reducido)
+        const float MOVE_THRESHOLD = 20.0f;
+        const float MAX_MOVE_REF = 220.0f;
+        float moveTarget = 0.0f;
         if (std::fabs(player.vel.x) > MOVE_THRESHOLD) {
-            float t = std::min(1.0f, std::fabs(player.vel.x) / MAX_MOVE_REF); // 0..1
+            float t = std::min(1.0f, std::fabs(player.vel.x) / MAX_MOVE_REF);
             float direction = (player.vel.x < 0.0f) ? -1.0f : 1.0f;
-            // cuánto desplazar en px (fracción del half-width del body):
-            // usamos bodyHalfW aproximado: si no lo conoces aquí, una fracción absoluta también funciona.
-            float approxBodyHalf = 28.0f * m_scale * m_bodyScale;
-            const float FACE_SHIFT_MAX = approxBodyHalf * 0.30f; // máximo desplazamiento en px
-            targetFace = direction * FACE_SHIFT_MAX * t;
+            moveTarget = direction * (approxBodyHalf * 0.25f) * t;
         }
 
-        // suavizado exponencial rápido (response grande => más rápido)
-        // m_faceResponse es en unidades "por segundo" de convergencia (ajusta si quieres más/menos rápido)
-        float alpha = 1.0f - std::exp(-m_faceResponse * dt); // estable y frame-rate independent
+        // target basado en apuntado: cos(angle) = +/-1 según izquierda/derecha
+        float aimTarget = std::cos(player.angle) * FACE_SHIFT_MAX_AIM;
+
+        // mezcla: preferimos que la cara siga al mouse, pero si te mueves mucho,
+        // mantenemos algo del movimiento para que no salte raro.
+        float moveWeight = std::min(1.0f, std::fabs(player.vel.x) / MAX_MOVE_REF);
+        float aimWeight = 0.9f; // cuánto prioriza el aim sobre el movimiento
+        float targetFace = aimTarget * aimWeight + moveTarget * (1.0f - aimWeight) * moveWeight;
+
+        // suavizado exponencial, m_faceResponse en unidades por segundo (conserva tu variable)
+        float alpha = 1.0f - std::exp(-m_faceResponse * dt);
         m_faceOffsetX += (targetFace - m_faceOffsetX) * alpha;
+
 
     }
 }

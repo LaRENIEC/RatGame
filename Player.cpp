@@ -46,6 +46,11 @@ Player::Player() {
     ragdollDragging = false;
     damage_flash_ms = 0;
     EquipWeapon(weaponType);
+
+    // ---- collider size (AABB) en función del TILE_SIZE global ----
+    // Ajusta estas fracciones si quieres que el jugador sea más estrecho/alto.
+    collisionHalfW = TILE_SIZE * 0.28f; // ~0.56 tiles ancho
+    collisionHalfH = TILE_SIZE * 0.45f; // ~0.9 tiles alto (ajústalo)
 }
 
 Player::~Player() {}
@@ -100,23 +105,21 @@ void Player::Reset() {
     angle = 0.0f;
     weaponType = PISTOL;
     hasShotgun = false;
-
-    // cargadores/reserva iniciales
     pistolMag = 12;
     pistolReserve = 48;
     shotgunMag = 0;
     shotgunReserve = 0;
-
     isReloading = false;
     reload_ms_remaining = 0;
     reloadWeapon = PISTOL;
-
     stun_ms = 0;
     damage_flash_ms = 0;
-
-    // recrear el objeto weapon básico (usa unique_ptr)
     weapon.reset();
     EquipWeapon(weaponType);
+
+    // Recalcular collider también al resetear
+    collisionHalfW = TILE_SIZE * 0.28f;
+    collisionHalfH = TILE_SIZE * 0.45f;
 }
 
 void Player::EquipWeapon(WeaponType t) {
@@ -132,18 +135,28 @@ void Player::EquipWeapon(WeaponType t) {
     else weapon = make_unique<Shotgun>();
 }
 
-void Player::UpdateAim(int mouseX, int mouseY) {
-    // usamos como origen de apuntado la posición visual del muzzle (player.pos.x, player.pos.y + MUZZLE_Y)
-    float dx = mouseX - pos.x;
-    float dy = mouseY - (pos.y + MUZZLE_Y);
+// Player.cpp
+
+void Player::UpdateAim(int mouseX, int mouseY, const Vec2& camOffset /*= Vec2(0,0)*/) {
+    // Convertir coords de cliente/pantalla a mundo: world = screen + camOffset
+    float worldMouseX = float(mouseX) + camOffset.x;
+    float worldMouseY = float(mouseY) + camOffset.y;
+
+    // Origen de apuntado: el "muzzle" visual (pos base + offset vertical)
+    float muzzleY = pos.y + MUZZLE_Y;
+    float muzzleX = pos.x;
+
+    float dx = worldMouseX - muzzleX;
+    float dy = worldMouseY - muzzleY;
+
+    // atan2 con el vector desde el muzzle->mouse en coordenadas de mundo
     angle = atan2f(dy, dx);
 }
 
-
 Vec2 Player::GetMuzzlePos() const {
-    // la posición real del muzzle = pies (pos) + vertical offset + avance en la dirección del ángulo
-    Vec2 base = Vec2(pos.x, pos.y + MUZZLE_Y);
-    return Vec2(base.x + cosf(angle) * MUZZLE_FORWARD, base.y + sinf(angle) * MUZZLE_FORWARD);
+    Vec2 base(pos.x, pos.y + MUZZLE_Y);
+    return Vec2(base.x + cosf(angle) * MUZZLE_FORWARD,
+        base.y + sinf(angle) * MUZZLE_FORWARD);
 }
 
 // ------------------- Draw (usa bodyAngle si ragdoll) -------------------
@@ -325,19 +338,17 @@ void Player::OnDeath() {
 }
 void Player::ResolveTileCollisions(float dt) {
     if (!g_currentLevel) return;
-    const float TILE = 32.0f;
+    const float TILE = TILE_SIZE;
     Level* L = g_currentLevel.get();
     if (!L) return;
 
-    // half extents (usa los miembros de Player)
     const float hw = collisionHalfW;
     const float hh = collisionHalfH;
 
-    // step up params
-    const float stepHeight = 12.0f; // px que puede subir el jugador automáticamente
-    const float eps = 0.01f;
+    const float eps = 0.001f;
+    // stepHeight relativo al TILE (permitir subir pequeños escalones)
+    const float stepHeight = std::min((float)TILE * 0.5f, 16.0f);
 
-    // AABB del jugador en world coords
     auto getAABB = [&](float cx, float cy, float& l, float& t, float& r, float& b) {
         l = cx - hw; r = cx + hw;
         t = cy - hh; b = cy + hh;
@@ -346,110 +357,119 @@ void Player::ResolveTileCollisions(float dt) {
     float l, t, r, b;
     getAABB(pos.x, pos.y, l, t, r, b);
 
+    // rango de tiles a chequear (clamp)
     int minC = std::max(0, (int)std::floor(l / TILE));
     int maxC = std::min(L->width - 1, (int)std::floor(r / TILE));
     int minR = std::max(0, (int)std::floor(t / TILE));
     int maxR = std::min(L->height - 1, (int)std::floor(b / TILE));
 
-    // helper para comprobar colisión de AABB con cualquier tile sólido
-    auto aabbIntersectsTile = [&](float ax0, float ay0, float ax1, float ay1, int tr, int tc)->bool {
-        float tileL = tc * TILE, tileT = tr * TILE;
-        float tileR = tileL + TILE, tileB = tileT + TILE;
-        if (ax1 <= tileL + eps) return false;
-        if (ax0 >= tileR - eps) return false;
-        if (ay1 <= tileT + eps) return false;
-        if (ay0 >= tileB - eps) return false;
-        return true;
+    auto tileAABB = [&](int tr, int tc, float& tl, float& tt, float& tr_, float& tb) {
+        tl = tc * TILE; tt = tr * TILE;
+        tr_ = tl + TILE; tb = tt + TILE;
         };
 
-    // Primero: intentamos resolver colisiones actuales
     bool anyGround = false;
 
-    // Repeated pass to resolve multiple overlaps (2 passes generalmente suficientes)
-    for (int pass = 0; pass < 2; ++pass) {
+    // Haremos hasta N passes para resolver penetraciones múltiples (normalmente 2-3 bastan)
+    const int MAX_PASSES = 4;
+    for (int pass = 0; pass < MAX_PASSES; ++pass) {
         getAABB(pos.x, pos.y, l, t, r, b);
         minC = std::max(0, (int)std::floor(l / TILE));
         maxC = std::min(L->width - 1, (int)std::floor(r / TILE));
         minR = std::max(0, (int)std::floor(t / TILE));
         maxR = std::min(L->height - 1, (int)std::floor(b / TILE));
 
+        bool anyPenetration = false;
+
         for (int rr = minR; rr <= maxR; ++rr) {
             for (int cc = minC; cc <= maxC; ++cc) {
                 Material m = L->TileMaterial(rr, cc);
-                if (!GetMaterialInfo(m).solid) continue; // ignorar no sólidos
+                if (!GetMaterialInfo(m).solid) continue;
 
-                float tileL = cc * TILE, tileT = rr * TILE;
-                float tileR = tileL + TILE, tileB = tileT + TILE;
+                float tl, tt, tr_, tb;
+                tileAABB(rr, cc, tl, tt, tr_, tb);
 
-                // comprobar intersección AABB - tile AABB
-                float ix0 = std::max(l, tileL);
-                float iy0 = std::max(t, tileT);
-                float ix1 = std::min(r, tileR);
-                float iy1 = std::min(b, tileB);
+                // Intersección AABB
+                float ix0 = std::max(l, tl);
+                float iy0 = std::max(t, tt);
+                float ix1 = std::min(r, tr_);
+                float iy1 = std::min(b, tb);
 
                 if (ix1 > ix0 + eps && iy1 > iy0 + eps) {
-                    // hay solapamiento -> calculamos profundidad en X e Y
-                    float overlapX = (ix1 - ix0);
-                    float overlapY = (iy1 - iy0);
+                    anyPenetration = true;
 
-                    // resolvemos por la mínima profundidad (MTV)
+                    float overlapX = ix1 - ix0;
+                    float overlapY = iy1 - iy0;
+
+                    // Resolver por mínima penetración (MTV)
                     if (overlapX < overlapY) {
-                        // separar en x
-                        if ((pos.x < tileL)) {
-                            // player está a la izquierda del tile -> empujar a la izquierda
-                            pos.x -= overlapX + eps;
-                            // si se empuja lateralmente y venía en esa dirección, cancelar componente
+                        // desplazar en X
+                        float tileCenterX = (tl + tr_) * 0.5f;
+                        if (pos.x < tileCenterX) {
+                            // jugador a la izquierda -> empujar a la izquierda
+                            pos.x -= (overlapX + eps);
                             if (vel.x > 0.0f) vel.x = 0.0f;
                         }
                         else {
-                            // player a la derecha del tile -> empujar a la derecha
-                            pos.x += overlapX + eps;
+                            pos.x += (overlapX + eps);
                             if (vel.x < 0.0f) vel.x = 0.0f;
                         }
                     }
                     else {
-                        // separar en y
-                        if (pos.y < tileT) {
-                            // player está arriba del tile -> aterrizó encima
-                            pos.y -= overlapY + eps;
-                            // anula velocidad descendente
+                        // desplazar en Y
+                        float tileCenterY = (tt + tb) * 0.5f;
+                        if (pos.y < tileCenterY) {
+                            // jugador arriba del tile -> aterrizó encima
+                            pos.y -= (overlapY + eps);
                             if (vel.y > 0.0f) vel.y = 0.0f;
                             anyGround = true;
                         }
                         else {
-                            // player debajo del tile -> choqué la cabeza
-                            pos.y += overlapY + eps;
+                            // jugador debajo -> choqué la cabeza
+                            pos.y += (overlapY + eps);
                             if (vel.y < 0.0f) vel.y = 0.0f;
                         }
-                    } // end choose axis
-                    // recomputar AABB y continuar (paso siguiente)
+                    }
+                    // recomputar AABB localmente (siguiente iteración de tiles usará nueva pos)
                     getAABB(pos.x, pos.y, l, t, r, b);
-                } // end intersects
+                }
             }
-        }
-    } // end passes
+        } // tiles loop
 
-    // Si detectamos una colisión lateral grande y no estamos en ground -> intentar step-up
-    // Comprobamos aproximación lateral inspeccionando tiles justo al lado del AABB
+        if (!anyPenetration) break; // ya no hay intersecciones
+    } // passes
+
+    // Si no estamos en terreno pero actualmente hay bloqueo lateral, intentar "step-up"
     if (!anyGround) {
-        // si había una colisión lateral en la pasada  arriba, intentamos subir
-        // calculamos candidate new y si libre movemos pos.y hacia arriba stepHeight (un solo intento)
-        float checkLeft = pos.x - hw - 1.0f;
-        float checkRight = pos.x + hw + 1.0f;
-        int cLeft = std::max(0, (int)std::floor(checkLeft / TILE));
-        int cRight = std::min(L->width - 1, (int)std::floor(checkRight / TILE));
-        int rowBelow = std::min(L->height - 1, (int)std::floor((pos.y + hh) / TILE));
+        // comprobar tiles a los lados justo por fuera del AABB
+        getAABB(pos.x, pos.y, l, t, r, b);
+        float checkLeftX = l - 1.0f;
+        float checkRightX = r + 1.0f;
+        int cLeft = std::max(0, (int)std::floor(checkLeftX / TILE));
+        int cRight = std::min(L->width - 1, (int)std::floor(checkRightX / TILE));
+        int rowBelow = std::min(L->height - 1, (int)std::floor(b / TILE));
+
+        // detectar si hay un bloque inmediatamente al lado que nos impidió avanzar
         bool blockedLeft = false, blockedRight = false;
-        if (cLeft >= 0) {
-            if (aabbIntersectsTile(l, t, r, b, rowBelow, cLeft)) blockedLeft = true;
+        auto intersectsTile = [&](float ax0, float ay0, float ax1, float ay1, int tr, int tc)->bool {
+            float tl, tt, tr_, tb; tileAABB(tr, tc, tl, tt, tr_, tb);
+            if (ax1 <= tl + eps) return false;
+            if (ax0 >= tr_ - eps) return false;
+            if (ay1 <= tt + eps) return false;
+            if (ay0 >= tb - eps) return false;
+            return true;
+            };
+
+        getAABB(pos.x, pos.y, l, t, r, b);
+        if (cLeft >= 0 && cLeft < L->width) {
+            if (intersectsTile(l, t, r, b, rowBelow, cLeft)) blockedLeft = true;
         }
-        if (cRight < L->width) {
-            if (aabbIntersectsTile(l, t, r, b, rowBelow, cRight)) blockedRight = true;
+        if (cRight >= 0 && cRight < L->width) {
+            if (intersectsTile(l, t, r, b, rowBelow, cRight)) blockedRight = true;
         }
 
-        bool attempted = false;
-        if ((blockedLeft || blockedRight)) {
-            // test si subir stepHeight libera el AABB
+        if (blockedLeft || blockedRight) {
+            // intentar subir un poco y comprobar si queda libre
             float tryY = pos.y - stepHeight;
             float tl, tt, tr_, tb;
             getAABB(pos.x, tryY, tl, tt, tr_, tb);
@@ -461,27 +481,23 @@ void Player::ResolveTileCollisions(float dt) {
             for (int rr = minR2; rr <= maxR2 && !coll; ++rr) {
                 for (int cc = minC2; cc <= maxC2; ++cc) {
                     if (!GetMaterialInfo(L->TileMaterial(rr, cc)).solid) continue;
-                    if (aabbIntersectsTile(tl, tt, tr_, tb, rr, cc)) { coll = true; break; }
+                    if (intersectsTile(tl, tt, tr_, tb, rr, cc)) { coll = true; break; }
                 }
             }
             if (!coll) {
+                // subir
                 pos.y = tryY;
-                attempted = true;
-            }
-        }
-        // si intentamos stepUp, re-ejecutar una pasada corta para que nos deje en ground si corresponde
-        if (attempted) {
-            // simple: una pasada rápida de resolución vertical (miramos tiles bajo el jugador)
-            getAABB(pos.x, pos.y, l, t, r, b);
-            int rr = std::min(L->height - 1, (int)std::floor(b / TILE));
-            for (int cc = std::max(0, (int)std::floor(l / TILE)); cc <= std::min(L->width - 1, (int)std::floor(r / TILE)); ++cc) {
-                if (!GetMaterialInfo(L->TileMaterial(rr, cc)).solid) continue;
-                float tileT = rr * TILE;
-                if (b > tileT && pos.y < tileT) {
-                    // corregir y aterrizar
-                    pos.y = tileT - hh - eps;
-                    vel.y = std::min(vel.y, 0.0f);
-                    anyGround = true;
+                // después de subir, intentar "aterrizar" en bloque bajo
+                getAABB(pos.x, pos.y, l, t, r, b);
+                int rr = std::min(L->height - 1, (int)std::floor(b / TILE));
+                for (int cc = std::max(0, (int)std::floor(l / TILE)); cc <= std::min(L->width - 1, (int)std::floor(r / TILE)); ++cc) {
+                    if (!GetMaterialInfo(L->TileMaterial(rr, cc)).solid) continue;
+                    float tileT = rr * TILE;
+                    if (b > tileT && pos.y < tileT) {
+                        pos.y = tileT - hh - eps;
+                        vel.y = std::min(vel.y, 0.0f);
+                        anyGround = true;
+                    }
                 }
             }
         }

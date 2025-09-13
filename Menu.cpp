@@ -34,20 +34,19 @@ void Menu::Destroy() {
 bool Menu::HandleCommand(int id) {
     switch (id) {
     case ID_START_BTN:
-        // abrir el panel de Start dentro de la UI in-game
         g_uiManager.ShowStartPanel();
         return true;
     case ID_OPTIONS_BTN:
-        // togglear dibujado de pickups (sigue usando mensaje al main si tu juego lo espera)
         PostMessage(hParent, MSG_TOGGLE_PICKUPS, 0, 0);
         return true;
     case ID_EXIT_BTN:
         PostMessage(hParent, WM_CLOSE, 0, 0);
         return true;
     case ID_LEVEL_EDITOR_BTN:
-        // abrir el editor: si migras a overlay, aquí llamarías a g_uiManager.ShowLevelEditorPanel()
-        // si mantienes el LevelEditor como child window, usa ShowLevelEditor()
-        ShowLevelEditor();
+        // Antes aquí había ShowLevelEditor(); -> eso crea la ventana child pequeña.
+        // En su lugar, postear un mensaje al WndProc principal para que muestre
+        // el panel de editor completo manejado por UIManager (overlay full-client).
+        PostMessage(hParent, MSG_SHOW_LEVEL_EDITOR, 0, 0);
         return true;
     }
     return false;

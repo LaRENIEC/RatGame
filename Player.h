@@ -3,13 +3,14 @@
 #include <memory>
 #include <windows.h>   // necesaria para HDC en la firma Draw
 #include "CommonTypes.h"
-
+#include "entity.h"
 // forward declarations
 class Weapon;
 namespace Gdiplus { class Bitmap; }
 enum WeaponType { PISTOL = 0, SHOTGUN = 1 };
 
-class Player {
+class Player : public Entity
+{
 public:
     Player();
     ~Player();                // <-- declarar, pero definir en .cpp (ver más abajo)
@@ -72,7 +73,7 @@ public:
     void UpdateReload(int dt_ms);    // actualizar estado de recarga cada frame
 
     void EquipWeapon(WeaponType t);
-    void UpdateAim(int mouseX, int mouseY);
+    void UpdateAim(int mouseX, int mouseY, const Vec2& camOffset = Vec2(0, 0));
 
     // Aplicar daño al jugador (source optional para empujar)
     void ApplyDamage(int amount, const Vec2& source = Vec2(0, 0));

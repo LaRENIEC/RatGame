@@ -24,19 +24,33 @@ Entity::~Entity() {}
 // Se basa en un AABB approximado tomando radius como semilado.
 // Ajusta pos y vel de la entidad (por ejemplo, pone vel.y = 0 al aterrizar).
 // -----------------------------------------------------------------------------
-void Entity::ResolveTileCollisions(Entity& ent, float dt) {
+// Entity.cpp - Replace ResolveTileCollisions with this optimized implementation
+void Entity::ResolveTileCollisions(Entity& ent, float /*dt*/) {
     if (!g_currentLevel) return;
-    const float TILE = 32.0f;
+    const float TILE = TILE_SIZE; // usar la constante global TILE_SIZE
     Level* L = g_currentLevel.get();
     if (!L) return;
 
-    // convertimos radius a half extents (si prefieres circular, mantenlo)
+    // convertimos radius a half extents
     const float hw = ent.radius;
     const float hh = ent.radius;
+    const float eps = 0.001f;
 
     auto getAABB = [&](float cx, float cy, float& l, float& t, float& r, float& b) {
         l = cx - hw; r = cx + hw;
         t = cy - hh; b = cy + hh;
+        };
+
+    // check rápido si un char de tile es sólido (evita GetMaterialInfo y llamadas costosas)
+    auto isTileCharSolid = [](char ch) -> bool {
+        // según tu mapping: '#' 'G' 'S' 'V' 'X' son sólidos; 'W' es agua (no sólido), '.' y letras de objetos no sólidos
+        // Ajusta si tu mapa tiene otros chars sólidos.
+        switch (ch) {
+        case '#': case 'G': case 'S': case 'V': case 'X':
+            return true;
+        default:
+            return false;
+        }
         };
 
     float l, t, r, b;
@@ -47,13 +61,12 @@ void Entity::ResolveTileCollisions(Entity& ent, float dt) {
     int minR = std::max(0, (int)std::floor(t / TILE));
     int maxR = std::min(L->height - 1, (int)std::floor(b / TILE));
 
-    const float eps = 0.01f;
-
-    // Resolve overlaps with minimal translation (MTV) per tile
+    // One-pass MTV resolution (suficiente para la mayoría de entidades; menos trabajo que múltiples passes)
     for (int rr = minR; rr <= maxR; ++rr) {
         for (int cc = minC; cc <= maxC; ++cc) {
-            Material m = L->TileMaterial(rr, cc);
-            if (!GetMaterialInfo(m).solid) continue;
+            char tileCh = L->TileCharAt(rr, cc);
+            if (!isTileCharSolid(tileCh)) continue;
+
             float tileL = cc * TILE, tileT = rr * TILE;
             float tileR = tileL + TILE, tileB = tileT + TILE;
 
@@ -62,38 +75,42 @@ void Entity::ResolveTileCollisions(Entity& ent, float dt) {
             float ix1 = std::min(r, tileR);
             float iy1 = std::min(b, tileB);
 
-            if (ix1 > ix0 + eps && iy1 > iy0 + eps) {
-                float overlapX = ix1 - ix0;
-                float overlapY = iy1 - iy0;
+            if (!(ix1 > ix0 + eps && iy1 > iy0 + eps)) continue;
 
-                if (overlapX < overlapY) {
-                    // separar en X
-                    if (ent.pos.x < tileL) {
-                        ent.pos.x -= overlapX + eps;
-                        if (ent.vel.x > 0.0f) ent.vel.x = 0.0f;
-                    }
-                    else {
-                        ent.pos.x += overlapX + eps;
-                        if (ent.vel.x < 0.0f) ent.vel.x = 0.0f;
-                    }
+            float overlapX = ix1 - ix0;
+            float overlapY = iy1 - iy0;
+
+            if (overlapX < overlapY) {
+                // separar en X
+                float tileCenterX = (tileL + tileR) * 0.5f;
+                if (ent.pos.x < tileCenterX) {
+                    ent.pos.x -= (overlapX + eps);
+                    if (ent.vel.x > 0.0f) ent.vel.x = 0.0f;
                 }
                 else {
-                    // separar en Y
-                    if (ent.pos.y < tileT) {
-                        ent.pos.y -= overlapY + eps;
-                        if (ent.vel.y > 0.0f) ent.vel.y = 0.0f;
-                    }
-                    else {
-                        ent.pos.y += overlapY + eps;
-                        if (ent.vel.y < 0.0f) ent.vel.y = 0.0f;
-                    }
+                    ent.pos.x += (overlapX + eps);
+                    if (ent.vel.x < 0.0f) ent.vel.x = 0.0f;
                 }
-                // recompute aabb for subsequent tiles
-                getAABB(ent.pos.x, ent.pos.y, l, t, r, b);
             }
+            else {
+                // separar en Y
+                float tileCenterY = (tileT + tileB) * 0.5f;
+                if (ent.pos.y < tileCenterY) {
+                    ent.pos.y -= (overlapY + eps);
+                    if (ent.vel.y > 0.0f) ent.vel.y = 0.0f;
+                }
+                else {
+                    ent.pos.y += (overlapY + eps);
+                    if (ent.vel.y < 0.0f) ent.vel.y = 0.0f;
+                }
+            }
+
+            // recompute local aabb so subsequent tiles see the new position
+            getAABB(ent.pos.x, ent.pos.y, l, t, r, b);
         }
     }
 }
+
 void Entity::Update(float /*dt*/, const Player& /*player*/, std::vector<Bullet>& /*outBullets*/) {}
 
 void Entity::Draw(HDC hdc) const {

@@ -31,51 +31,46 @@ static float AngleTo(const Vec2& from, const Vec2& to) {
     return atan2f(to.y - from.y, to.x - from.x);
 }
 
+// Enemy.cpp - optimized Update
 void Enemy::Update(float dt, const Player& player, std::vector<Bullet>& outBullets) {
     if (!alive) {
         vel.y += 1500.0f * dt;
         pos.x += vel.x * dt;
         pos.y += vel.y * dt;
-        ResolveTileCollisions(*this, dt); // evita que cuerpos muertos atraviesen tiles
+        ResolveTileCollisions(*this, dt);
         return;
     }
 
-    // ---------- resolver colisiones con tiles ----------
+    // Resolve tile collisions early (cheap now)
     ResolveTileCollisions(*this, dt);
-    // timers
+
     if (fireTimerMs > 0.0f) fireTimerMs = std::max<float>(0.0f, fireTimerMs - dt * 1000.0f);
     if (stun_ms > 0) { stun_ms = std::max<int>(0, stun_ms - (int)(dt * 1000.0f)); }
 
-    // distancia al player
+    // distancia al player: usamos squared distances para evitar sqrt
     float dx = player.pos.x - pos.x;
     float dy = player.pos.y - pos.y;
     float dist2 = dx * dx + dy * dy;
-    float dist = sqrtf(dist2);
+    float aggroRange2 = aggroRange * aggroRange;
+    float fireRange2 = fireRange * fireRange;
 
-    bool inAggro = dist <= aggroRange;
-    bool inFire = dist <= fireRange;
+    bool inAggro = dist2 <= aggroRange2;
+    bool inFire = dist2 <= fireRange2;
 
-    // AI movement: si en rango de aggro perseguir, sino patrullar entre puntos
     if (stun_ms <= 0) {
         if (inAggro) {
-            // acercarse horizontalmente con velocidad limitada
             float dir = (player.pos.x > pos.x) ? 1.0f : -1.0f;
             vel.x = dir * speed;
         }
         else {
-            // patrulla: mover entre left/right
+            // patrulla
             if (patrolRightX <= patrolLeftX) {
-                // sin patrol: quedarse en sitio
                 vel.x = 0.0f;
             }
             else {
-                if (pos.x < patrolLeftX) {
-                    vel.x = speed;
-                }
-                else if (pos.x > patrolRightX) {
-                    vel.x = -speed;
-                } // si está entre, mantener velocidad
-                // si llega a extremos invierte velocidad
+                if (pos.x < patrolLeftX) vel.x = speed;
+                else if (pos.x > patrolRightX) vel.x = -speed;
+                // invertimos si alcanzó los extremos
                 if ((pos.x <= patrolLeftX && vel.x < 0.0f) || (pos.x >= patrolRightX && vel.x > 0.0f)) {
                     vel.x = -vel.x;
                 }
@@ -83,21 +78,22 @@ void Enemy::Update(float dt, const Player& player, std::vector<Bullet>& outBulle
         }
     }
     else {
-        // aturdido: disminuir velocidad gradualmente
         vel.x *= 0.9f;
     }
 
-    // aplicar física sencilla
-    vel.y += 1500.0f * dt; // gravedad local (puedes usar tu GRAVITY global)
+    // física simple
+    vel.y += 1500.0f * dt;
     pos.x += vel.x * dt;
     pos.y += vel.y * dt;
 
-    // Disparo: cuando en rango y cooldown listo (y no aturdido)
+    // Disparo: reservar bullets antes si vamos a generar varios
     if (alive && stun_ms <= 0 && inFire && fireTimerMs <= 0.0f) {
-        // dispara hacia el jugador
         float baseAngle = AngleTo(pos, player.pos);
 
-        // spawn bullets (single or spread)
+        // reservar para evitar reallocs (pequeño optim)
+        int willSpawn = bulletsPerShot;
+        outBullets.reserve(outBullets.size() + willSpawn);
+
         if (bulletsPerShot == 1) {
             float vx = cosf(baseAngle) * bulletSpeed;
             float vy = sinf(baseAngle) * bulletSpeed;
@@ -113,7 +109,7 @@ void Enemy::Update(float dt, const Player& player, std::vector<Bullet>& outBulle
             }
         }
 
-        // retroceso simple
+        // retroceso
         vel.x += -cosf(baseAngle) * 60.0f;
         vel.y += -sinf(baseAngle) * 20.0f;
 
@@ -121,39 +117,41 @@ void Enemy::Update(float dt, const Player& player, std::vector<Bullet>& outBulle
     }
 }
 
+// Enemy.cpp - optimized Draw
 void Enemy::Draw(HDC hdc) const {
-    // dibujar con color distinto
+    if (!hdc) return;
     int x = (int)pos.x;
     int y = (int)pos.y;
     int r = (int)radius;
 
-    HBRUSH fill = CreateSolidBrush(RGB(180, 40, 40));
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(90, 20, 20));
-    HGDIOBJ oldB = SelectObject(hdc, fill);
-    HGDIOBJ oldP = SelectObject(hdc, pen);
+    // caches estáticos (creados una vez)
+    static HBRUSH s_fill = NULL;
+    static HPEN s_pen = NULL;
+    if (!s_fill) s_fill = CreateSolidBrush(RGB(180, 40, 40));
+    if (!s_pen) s_pen = CreatePen(PS_SOLID, 2, RGB(90, 20, 20));
+
+    HGDIOBJ oldB = SelectObject(hdc, s_fill);
+    HGDIOBJ oldP = SelectObject(hdc, s_pen);
     Ellipse(hdc, x - r, y - r, x + r, y + r);
     SelectObject(hdc, oldB);
     SelectObject(hdc, oldP);
-    DeleteObject(fill);
-    DeleteObject(pen);
 
-    // health bar (llamamos al base Draw para la barra para mantener estilo)
-    // podrías evitar doble-dibujo; llamo a la implementación base sólo para barra:
-    // Usamos una versión simplificada de la barra encima:
+    // health bar (también con brushes reusables)
+    static HBRUSH s_back = NULL;
+    static HBRUSH s_fillbar = NULL;
+    if (!s_back) s_back = CreateSolidBrush(RGB(40, 40, 40));
+    if (!s_fillbar) s_fillbar = CreateSolidBrush(RGB(200, 0, 0));
     int barW = r * 2;
     int bx = x - r;
     int by = y - r - 10;
-    float pct = (maxHealth > 0) ? (float)health / (float)maxHealth : 0.0f;
     RECT back = { bx, by, bx + barW, by + 6 };
-    HBRUSH backBrush = CreateSolidBrush(RGB(40, 40, 40));
-    FillRect(hdc, &back, backBrush);
-    DeleteObject(backBrush);
-    int fillW = max(0, (int)(barW * pct));
+    FillRect(hdc, &back, s_back);
+    float pct = (maxHealth > 0) ? (float)health / (float)maxHealth : 0.0f;
+    int fillW = std::max<int>(0, static_cast<int>(barW * pct));
     RECT fillR = { bx, by, bx + fillW, by + 6 };
-    HBRUSH fillBrush = CreateSolidBrush(RGB((int)((1.0f - pct) * 200), (int)(pct * 200), 40));
-    FillRect(hdc, &fillR, fillBrush);
-    DeleteObject(fillBrush);
+    FillRect(hdc, &fillR, s_fillbar);
 }
+
 
 void Enemy::OnDeath() {
     // cambiar color ya ocurre en Draw cuando !alive

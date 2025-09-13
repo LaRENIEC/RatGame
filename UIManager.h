@@ -59,7 +59,7 @@ public:
     void OnEditorRButtonUp(int x, int y);
     void FitEditorToWindow();
 
-private:
+//private:
     HINSTANCE m_hInst = NULL;
     HWND m_hMainWnd = NULL;
 

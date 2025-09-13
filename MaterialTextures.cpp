@@ -9,7 +9,7 @@ using namespace Gdiplus;
 static std::map<Material, std::wstring> s_matToPath = {
     { M_AIR, L"assets/materials/air.png" },
     // Eliminamos la textura específica de "grass": apuntamos grass al mismo recurso que dirt
-    { M_GRASS, L"assets/materials/dirt.png" }, // <- grass usa la textura dirt para "quitar template grass"
+    { M_GRASS, L"assets/materials/grass.png" }, // <- grass usa la textura dirt para "quitar template grass"
     { M_SAND, L"assets/materials/sand.png" },
     { M_DIRT, L"assets/materials/dirt.png" },
     { M_GRAVEL, L"assets/materials/gravel.png" },

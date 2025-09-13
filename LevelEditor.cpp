@@ -39,6 +39,8 @@ LevelEditor::LevelEditor() {
     m_panning = false;
     m_panLastX = m_panLastY = 0;
     m_hBtnFit = NULL;
+    m_cursorRow = 0;
+    m_cursorCol = 0;
 }
 
 LevelEditor::~LevelEditor() { Destroy(); }
@@ -108,22 +110,31 @@ void LevelEditor::FitToWindow() {
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
 
-    // leave area for controls on top + palette on right (simple heuristic)
-    int usableW = w - 40;
-    int usableH = h - 96;
+    // deja espacio para controles y panel derecho
+    int usableW = w - (SIDE_MARGIN * 2) - RIGHT_PANEL_W; // ancho real para el grid
+    int usableH = h - (TOP_BAR_H + SIDE_MARGIN);         // alto real para el grid
     if (usableW <= 0 || usableH <= 0) return;
 
     int tilesW = m_editLevel->width;
     int tilesH = m_editLevel->height;
-    int tileW = std::max(4, usableW / tilesW);
-    int tileH = std::max(4, usableH / tilesH);
+
+    // determinar tileSize para que quepan todos los tiles en el área utilizable
+    int tileW = std::max(6, usableW / tilesW);
+    int tileH = std::max(6, usableH / tilesH);
     m_tileSize = std::min(tileW, tileH);
 
-    // center grid in client
+    // Si el nivel es muy pequeño y cabe holgado, no dejar tileSize excesivo
+    if (m_tileSize > 128) m_tileSize = 128;
+
+    // centrar el grid **dentro del área utilizable** (no sobre toda la ventana)
     int totalPxW = tilesW * m_tileSize;
     int totalPxH = tilesH * m_tileSize;
-    m_viewOffsetX = (w - totalPxW) / 2;
-    m_viewOffsetY = (h - totalPxH) / 2 + 24;
+
+    int areaLeft = SIDE_MARGIN;
+    int areaTop = TOP_BAR_H;
+
+    m_viewOffsetX = areaLeft + std::max(0, (usableW - totalPxW) / 2);
+    m_viewOffsetY = areaTop + std::max(0, (usableH - totalPxH) / 2);
 }
 
 void LevelEditor::OnMouseWheel(int x, int y, short delta) {
@@ -174,20 +185,50 @@ void LevelEditor::RegisterClassIfNeeded() {
 }
 
 bool LevelEditor::CreateEditorWindow() {
-    if (!m_hParent) return false;
-    RECT rc; GetClientRect(m_hParent, &rc);
+    // Desired client area
+    const int desiredClientW = 1000;
+    const int desiredClientH = 720;
 
-    // nuevo tamaño por defecto: más grande
-    int w = 1000, h = 720;
-    int x = (rc.right - w) / 2;
-    int y = (rc.bottom - h) / 2;
+    // Use a top-level resizable window so it can be larger than the main window.
+    DWORD style = WS_OVERLAPPEDWINDOW;
+    DWORD exStyle = WS_EX_APPWINDOW;
 
-    m_hWnd = CreateWindowExW(WS_EX_CLIENTEDGE, L"LevelEditorWndClass", L"Level Editor",
-        WS_CHILD | WS_VISIBLE | WS_BORDER, x, y, w, h, m_hParent, NULL, m_hInst, this);
+    // Compute window size that yields the desired client area
+    RECT wr = { 0, 0, desiredClientW, desiredClientH };
+    AdjustWindowRect(&wr, style, FALSE);
+    int winW = wr.right - wr.left;
+    int winH = wr.bottom - wr.top;
+
+    // center on the screen
+    int left = (GetSystemMetrics(SM_CXSCREEN) - winW) / 2;
+    int top = (GetSystemMetrics(SM_CYSCREEN) - winH) / 2;
+
+    // Create a top-level window (no parent) so it's not clipped by m_hParent
+    m_hWnd = CreateWindowExW(exStyle, L"LevelEditorWndClass", L"Level Editor",
+        style, left, top, winW, winH, NULL, NULL, m_hInst, this);
+
     if (!m_hWnd) return false;
 
+    // create controls after the window exists
     CreateControls();
+
+    // show and update
+    ShowWindow(m_hWnd, SW_SHOW);
+    UpdateWindow(m_hWnd);
+    SetFocus(m_hWnd);
+
+    // Fit grid to the now-correct client area
+    FitToWindow();
+
     return true;
+}
+
+void LevelEditor::ResizeControls() {
+    if (!m_hWnd) return;
+
+    // Para simplicidad reproducimos la lógica de CreateControls: destruimos y recreamos
+    DestroyControls();
+    CreateControls();
 }
 
 void LevelEditor::DestroyEditorWindow() {
@@ -218,11 +259,14 @@ void LevelEditor::CreateControls() {
     m_hLevelIndex = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
         left + 4 * (btnW + spacing) + 50, 10, 60, 24, m_hWnd, (HMENU)ID_ED_LEVEL_INDEX, m_hInst, NULL);
 
-    // Tile list a la derecha con ancho fijo mayor (más espacio)
-    int tileListW = 360;
-    int tileListX = std::max(w - tileListW - 12, left + 4 * (btnW + spacing) + 120);
+    // Tile list a la derecha con ancho fijo mayor (más espacio) - usar constante RIGHT_PANEL_W
+    int tileListW = RIGHT_PANEL_W;
+    int tileListX = std::max(w - tileListW - SIDE_MARGIN, left + 4 * (btnW + spacing) + 120);
+    // colocar la lista empezando un poco más abajo (debajo de la barra superior)
+    int tileListY = 10;
+    int tileListH = std::max(200, h - (TOP_BAR_H + SIDE_MARGIN));
     m_hTileList = CreateWindowW(L"LISTBOX", NULL, WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL,
-        tileListX, 10, tileListW, std::max(200, h - 80), m_hWnd, (HMENU)ID_ED_TILE_LIST, m_hInst, NULL);
+        tileListX, tileListY, tileListW, tileListH, m_hWnd, (HMENU)ID_ED_TILE_LIST, m_hInst, NULL);
 
     // llenar palette
     SendMessageW(m_hTileList, LB_RESETCONTENT, 0, 0);
@@ -243,6 +287,9 @@ void LevelEditor::DestroyControls() {
 }
 
 void LevelEditor::NewEmptyLevel(int w, int h) {
+    // clamp a límites razonables definidos en Level
+    Level::ClampDimensions(w, h);
+
     m_editLevel = std::make_unique<Level>();
     m_editLevel->width = w;
     m_editLevel->height = h;
@@ -341,7 +388,21 @@ void LevelEditor::Paint(HDC hdc) {
         Ellipse(hdc, tx - 6, ty - 6, tx + 6, ty + 6);
         DeleteObject(b2);
     }
-
+    // highlight cursor cell
+    if (m_editLevel) {
+        if (m_cursorRow >= 0 && m_cursorRow < m_editLevel->height && m_cursorCol >= 0 && m_cursorCol < m_editLevel->width) {
+            int cx = sx + m_cursorCol * m_tileSize;
+            int cy = sy + m_cursorRow * m_tileSize;
+            // pen rojo grueso para resaltar
+            HPEN curPen = CreatePen(PS_SOLID, 2, RGB(255, 100, 100));
+            HPEN oldPen = (HPEN)SelectObject(hdc, curPen);
+            HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, cx, cy, cx + m_tileSize, cy + m_tileSize);
+            SelectObject(hdc, oldBrush);
+            SelectObject(hdc, oldPen);
+            DeleteObject(curPen);
+        }
+    }
     // reticle (crosshair) if inside grid
     if (m_mouseX >= gridLeft && m_mouseX < gridRight && m_mouseY >= gridTop && m_mouseY < gridBottom) {
         HPEN pen = CreatePen(PS_DOT, 1, RGB(220, 220, 220));
@@ -351,14 +412,98 @@ void LevelEditor::Paint(HDC hdc) {
         SelectObject(hdc, old); DeleteObject(pen);
     }
 }
+void LevelEditor::EnsureCursorVisible() {
+    if (!m_editLevel) return;
+    RECT rc; GetClientRect(m_hWnd, &rc);
+    int clientW = rc.right - rc.left;
+    int clientH = rc.bottom - rc.top;
+
+    // área disponible para el grid (igual que en FitToWindow)
+    int areaLeft = SIDE_MARGIN;
+    int areaTop = TOP_BAR_H;
+    int areaRight = clientW - SIDE_MARGIN - RIGHT_PANEL_W;
+    int areaBottom = clientH - SIDE_MARGIN;
+
+    int tilesW = m_editLevel->width, tilesH = m_editLevel->height;
+    int gridLeft = m_viewOffsetX, gridTop = m_viewOffsetY;
+    int gridRight = gridLeft + tilesW * m_tileSize;
+    int gridBottom = gridTop + tilesH * m_tileSize;
+
+    int cellLeft = gridLeft + m_cursorCol * m_tileSize;
+    int cellTop = gridTop + m_cursorRow * m_tileSize;
+    int cellRight = cellLeft + m_tileSize;
+    int cellBottom = cellTop + m_tileSize;
+
+    int dx = 0, dy = 0;
+
+    // asegúrate que la celda no quede fuera del área visible (dejamos márgenes de 8px)
+    const int M = 8;
+    if (cellLeft < areaLeft + M) dx = (areaLeft + M) - cellLeft;
+    else if (cellRight > areaRight - M) dx = (areaRight - M) - cellRight;
+
+    if (cellTop < areaTop + M) dy = (areaTop + M) - cellTop;
+    else if (cellBottom > areaBottom - M) dy = (areaBottom - M) - cellBottom;
+
+    if (dx != 0 || dy != 0) {
+        m_viewOffsetX += dx;
+        m_viewOffsetY += dy;
+    }
+}
+
+void LevelEditor::OnKeyDownHandler(WPARAM wParam, LPARAM lParam) {
+    if (!m_editLevel) return;
+
+    bool moved = false;
+    switch (wParam) {
+    case VK_LEFT:
+        if (m_cursorCol > 0) { m_cursorCol--; moved = true; }
+        break;
+    case VK_RIGHT:
+        if (m_cursorCol < m_editLevel->width - 1) { m_cursorCol++; moved = true; }
+        break;
+    case VK_UP:
+        if (m_cursorRow > 0) { m_cursorRow--; moved = true; }
+        break;
+    case VK_DOWN:
+        if (m_cursorRow < m_editLevel->height - 1) { m_cursorRow++; moved = true; }
+        break;
+    case VK_SPACE:
+    case VK_RETURN:
+        // colocar tile en la celda actual
+        if (m_currentTile == 'P') {
+            m_editLevel->spawnX = m_cursorCol * (float)32 + 16.0f;
+            m_editLevel->spawnY = m_cursorRow * (float)32 + 16.0f;
+        }
+        else {
+            m_editLevel->tiles[m_cursorRow][m_cursorCol] = m_currentTile;
+        }
+        m_editLevel->BuildMaterialGrid();
+        InvalidateRect(m_hWnd, NULL, FALSE);
+        break;
+    default:
+        break;
+    }
+
+    if (moved) {
+        EnsureCursorVisible();
+        InvalidateRect(m_hWnd, NULL, FALSE);
+    }
+}
 
 void LevelEditor::OnMouseDown(int x, int y) {
     if (!m_editLevel) return;
+    // asegurar foco para capturar teclado
+    SetFocus(m_hWnd);
+
     int sx = m_viewOffsetX, sy = m_viewOffsetY;
     int gx = x - sx, gy = y - sy;
     if (gx < 0 || gy < 0) return;
     int c = gx / m_tileSize; int r = gy / m_tileSize;
     if (r >= 0 && r < m_editLevel->height && c >= 0 && c < m_editLevel->width) {
+        // actualizar cursor a la celda clicada
+        m_cursorRow = r;
+        m_cursorCol = c;
+
         if (m_currentTile == 'P') {
             m_editLevel->spawnX = c * (float)32 + 16.0f;
             m_editLevel->spawnY = r * (float)32 + 16.0f;
@@ -367,6 +512,7 @@ void LevelEditor::OnMouseDown(int x, int y) {
             m_editLevel->tiles[r][c] = m_currentTile;
         }
         m_editLevel->BuildMaterialGrid();
+        EnsureCursorVisible();
         InvalidateRect(m_hWnd, NULL, FALSE);
     }
 }
@@ -446,6 +592,21 @@ LRESULT LevelEditor::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
         m_hWnd = NULL;
         return 0;
     }
+    case WM_SIZE:
+    {
+        // recrear/reajustar controles y ajustar vista
+        ResizeControls();
+        FitToWindow(); // opcional: ajustar el tileSize para ver todo al cambiar tamaño
+        InvalidateRect(hwnd, NULL, FALSE);
+        return 0;
+    }
+    case WM_KEYDOWN:
+    {
+        // reenviar a la instancia
+        OnKeyDownHandler(wParam, lParam);
+        return 0;
+    }
+
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }

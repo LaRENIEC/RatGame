@@ -13,7 +13,7 @@ Shotgun::Shotgun() {
     m_cfg.stun_ms = 50;
     m_cfg.damage = 6;
 
-    m_cfg.magazineSize = 2;   // ejemplo: 2 cartuchos en el cargador
+    m_cfg.magazineSize = 8;   // ejemplo: 2 cartuchos en el cargador
     m_cfg.reload_ms = 1100;   // 1.1s recarga
 }
 

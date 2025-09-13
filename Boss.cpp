@@ -2,7 +2,13 @@
 #include "Player.h"
 #include <cmath>
 #include <windows.h>
+#ifdef max
+#undef max
+#endif
 
+#ifdef min
+#undef min
+#endif
 Boss::Boss() : phaseTimer(0.0f), phase(0), burstCooldownMs(2000.0f), burstTimerMs(0.0f), burstShotsRemaining(0) {
     maxHealth = 500;
     health = maxHealth;
@@ -26,6 +32,7 @@ static float AngleBetween(const Vec2& a, const Vec2& b) {
     return atan2f(b.y - a.y, b.x - a.x);
 }
 
+// Boss.cpp - optimized Update
 void Boss::Update(float dt, const Player& player, std::vector<Bullet>& outBullets) {
     if (!alive) {
         vel.y += 2000.0f * dt;
@@ -41,116 +48,113 @@ void Boss::Update(float dt, const Player& player, std::vector<Bullet>& outBullet
         phaseTimer = 0.0f;
     }
 
-    // reduce timers
+    // timers (ms)
     if (fireTimerMs > 0.0f) fireTimerMs = std::max<float>(0.0f, fireTimerMs - dt * 1000.0f);
     if (burstTimerMs > 0.0f) burstTimerMs = std::max<float>(0.0f, burstTimerMs - dt * 1000.0f);
 
-    // simple movement: flota sobre el jugador en x, mantiene cierta altitud sobre ground
+    // movement: follow player X
     float targetX = player.pos.x;
     float dx = targetX - pos.x;
     vel.x = (fabsf(dx) > 8.0f) ? ((dx > 0.0f) ? speed : -speed) : 0.0f;
 
-    // slight bob in Y
+    // slight bob
     pos.y += sinf(phaseTimer * 2.0f) * 6.0f * dt;
 
-    // integrator
-    vel.y += 800.0f * dt; // gravedad parcial
+    // integrate
+    vel.y += 800.0f * dt;
     pos.x += vel.x * dt;
     pos.y += vel.y * dt;
 
-    // attack patterns by phase
+    // angle to player (compute once)
     float toPlayerAng = AngleBetween(pos, player.pos);
+
     if (phase == 0) {
-        // spread shotgun-style bursts occasionally
+        // bursts: spawn multiple pellets per burst
         if (burstTimerMs <= 0.0f) {
-            // start a small burst of 3 shots
             burstShotsRemaining = 3;
-            burstTimerMs = 300.0f; // time between shots in burst
+            burstTimerMs = 300.0f;
         }
         if (burstShotsRemaining > 0 && burstTimerMs <= 1.0f) {
-            // shoot shotgun-style (many pellets)
             int pellets = 8;
             float spread = 1.2f;
+            outBullets.reserve(outBullets.size() + pellets);
             for (int i = 0; i < pellets; ++i) {
                 float t = (pellets == 1) ? 0.0f : (float)i / (pellets - 1);
                 float ang = toPlayerAng + (t - 0.5f) * spread;
                 float vx = cosf(ang) * (bulletSpeed * 0.9f);
                 float vy = sinf(ang) * (bulletSpeed * 0.9f);
-                outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs);
+                outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs, damagePerBullet, false);
             }
             burstShotsRemaining--;
             burstTimerMs = 300.0f;
         }
     }
     else if (phase == 1) {
-        // steady single shots faster
         if (fireTimerMs <= 0.0f) {
             float vx = cosf(toPlayerAng) * (bulletSpeed * 1.1f);
             float vy = sinf(toPlayerAng) * (bulletSpeed * 1.1f);
-            outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs);
+            outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs, damagePerBullet, false);
             fireTimerMs = 420.0f;
         }
     }
     else { // phase 2
-        // charge every few seconds: quick dash towards player then high-damage shotgun
         if (burstTimerMs <= 0.0f) {
-            // dash
             float dashStrength = 550.0f;
             vel.x += cosf(toPlayerAng) * dashStrength;
             vel.y += sinf(toPlayerAng) * dashStrength * 0.3f;
-            // prepare big shotgun after dash
             burstShotsRemaining = 1;
-            burstTimerMs = 1200.0f; // time until big shot
+            burstTimerMs = 1200.0f;
         }
         else if (burstShotsRemaining > 0 && burstTimerMs < 300.0f) {
-            // big shotgun volley
             int pellets = 18;
             float spread = 2.2f;
+            outBullets.reserve(outBullets.size() + pellets);
             for (int i = 0; i < pellets; ++i) {
                 float t = (pellets == 1) ? 0.0f : (float)i / (pellets - 1);
                 float ang = toPlayerAng + (t - 0.5f) * spread;
                 float vx = cosf(ang) * (bulletSpeed * 0.75f);
                 float vy = sinf(ang) * (bulletSpeed * 0.75f);
-                outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs);
+                outBullets.emplace_back(pos, Vec2(vx, vy), bulletLifeMs, damagePerBullet, false);
             }
             burstShotsRemaining = 0;
-            // longer cooldown
             burstTimerMs = 2200.0f;
-            ResolveTileCollisions(*this, dt);
+            // no need to llamar ResolveTileCollisions aquí; ya lo hacemos en la siguiente frame/loop si hace falta
         }
     }
 }
 
+// Boss.cpp - optimized Draw
 void Boss::Draw(HDC hdc) const {
+    if (!hdc) return;
     int x = (int)pos.x;
     int y = (int)pos.y;
     int r = (int)radius;
 
-    // big purple boss
-    HBRUSH fill = CreateSolidBrush(RGB(120, 30, 140));
-    HPEN pen = CreatePen(PS_SOLID, 3, RGB(60, 10, 90));
-    HGDIOBJ oldB = SelectObject(hdc, fill);
-    HGDIOBJ oldP = SelectObject(hdc, pen);
+    static HBRUSH s_fill = NULL;
+    static HPEN s_pen = NULL;
+    if (!s_fill) s_fill = CreateSolidBrush(RGB(120, 30, 140));
+    if (!s_pen) s_pen = CreatePen(PS_SOLID, 3, RGB(60, 10, 90));
+
+    HGDIOBJ oldB = SelectObject(hdc, s_fill);
+    HGDIOBJ oldP = SelectObject(hdc, s_pen);
     Ellipse(hdc, x - r, y - r, x + r, y + r);
     SelectObject(hdc, oldB);
     SelectObject(hdc, oldP);
-    DeleteObject(fill);
-    DeleteObject(pen);
 
-    // health bar large
+    // health bar
+    static HBRUSH s_back = NULL;
+    static HBRUSH s_fillbar = NULL;
+    if (!s_back) s_back = CreateSolidBrush(RGB(40, 40, 40));
+    if (!s_fillbar) s_fillbar = CreateSolidBrush(RGB(200, 80, 80));
     int barW = r * 2 + 40;
     int bx = x - (barW / 2);
     int by = y - r - 18;
     RECT back = { bx, by, bx + barW, by + 8 };
-    HBRUSH backBrush = CreateSolidBrush(RGB(40, 40, 40));
-    FillRect(hdc, &back, backBrush);
-    DeleteObject(backBrush);
+    FillRect(hdc, &back, s_back);
     float pct = (maxHealth > 0) ? (float)health / (float)maxHealth : 0.0f;
-    int fillW = max(0, (int)(barW * pct));
+    int fillW = std::max(0, (int)(barW * pct));
     RECT fillR = { bx, by, bx + fillW, by + 8 };
-    HBRUSH fillBrush = CreateSolidBrush(RGB((int)((1.0f - pct) * 200), (int)(pct * 200), 80));
-    FillRect(hdc, &fillR, fillBrush);
-    DeleteObject(fillBrush);
+    FillRect(hdc, &fillR, s_fillbar);
 }
 
 void Boss::OnDeath() {

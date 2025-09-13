@@ -132,7 +132,7 @@ static void SpawnEntitiesFromCurrentLevel() {
     g_entities.clear();
     if (!g_currentLevel) return;
 
-    const float TILE = 32.0f;
+    const float TILE = TILE_SIZE;
     std::vector<LevelObject> objs;
     g_currentLevel->EnumerateObjects(objs);
 
@@ -184,13 +184,35 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // Crear ventana principal
     int left = (GetSystemMetrics(SM_CXSCREEN) - WINDOW_W) / 2;
     int top = (GetSystemMetrics(SM_CYSCREEN) - WINDOW_H) / 2;
-    g_hWnd = CreateWindowEx(
+    // Crear ventana principal (Ajustamos el rect para que el CLIENT tenga WINDOW_W x WINDOW_H)
+    DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN; // permitir redimensionar, maximizebox, etc.
+    RECT wr = { 0, 0, WINDOW_W, WINDOW_H };
+    AdjustWindowRect(&wr, style, FALSE);
+    int winW = wr.right - wr.left;
+    int winH = wr.bottom - wr.top;
+
+    g_hWnd = CreateWindowExW(
         0,
         wc.lpszClassName,
         L"RatGame - Modular 2D",
-        (WS_OVERLAPPEDWINDOW & ~WS_THICKFRAME) | WS_CLIPCHILDREN,
-        left, top, WINDOW_W, WINDOW_H,
+        style,
+        left, top, winW, winH,
         NULL, NULL, hInstance, NULL);
+    if (!g_hWnd) return -1;
+
+    // Mostrar y actualizar ventana
+    ShowWindow(g_hWnd, nCmdShow);
+    UpdateWindow(g_hWnd);
+
+    // Asegurarnos de conocer el tamaño real del client y notificar UI
+    RECT clientRc; GetClientRect(g_hWnd, &clientRc);
+    g_clientW = clientRc.right - clientRc.left;
+    g_clientH = clientRc.bottom - clientRc.top;
+    g_gameUI.OnResize(g_clientW, g_clientH, 1.0f);
+    g_hud.OnResize(g_clientW, g_clientH, 1.0f);
+    // Si el editor está abierto, forzamos que ajuste su viewport
+    g_uiMgr.FitEditorToWindow();
+
     if (!g_hWnd) return -1;
 
     ShowWindow(g_hWnd, nCmdShow);
@@ -240,7 +262,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // Inicializar player (o esperar al ApplyLevel)
 // colocar al jugador en el spawn del nivel (si existe) o fallback al centro/ventana
     if (g_currentLevel) {
-        g_player.pos = Vec2(g_currentLevel->spawnX, g_currentLevel->spawnY);
+        // asegúrate de que materialGrid/tiles están construidos antes de colocar al jugador
+        g_currentLevel->PlacePlayerAtSpawn(g_player);
     }
     else {
         // si no hay nivel, colocamos al jugador en el centro de la ventana
@@ -273,11 +296,50 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     {
         g_clientW = LOWORD(lParam);
         g_clientH = HIWORD(lParam);
-        float scale = 1.0f; // si calculas un scale, pásalo
+
+        // recalcular escalado/layouts
+        float scale = 1.0f; // o calcula uno si lo quieres dinámico
         g_gameUI.OnResize(g_clientW, g_clientH, scale);
         g_hud.OnResize(g_clientW, g_clientH, scale);
+
+        // Si el panel del editor está activo, que recalcule su grid/tileSize y reubique
+        if (g_uiMgr.HasActivePanel()) {
+            g_uiMgr.FitEditorToWindow();
+            g_uiMgr.InvalidatePanel(false);
+        }
+
+        // forzar repintado
+        InvalidateRect(hWnd, NULL, FALSE);
     }
     break;
+    case WM_DISPLAYCHANGE:
+    {
+        // redimensionar/centrar la ventana al 90% del nuevo display (evita que quede pequeña)
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+
+        int newW = std::max(640, (int)std::round(screenW * 0.90)); // mínimo 640
+        int newH = std::max(480, (int)std::round(screenH * 0.90)); // mínimo 480
+        int left = (screenW - newW) / 2;
+        int top = (screenH - newH) / 2;
+
+        SetWindowPos(hWnd, NULL, left, top, newW, newH, SWP_NOZORDER | SWP_SHOWWINDOW);
+
+        // actualizar client realmente disponible
+        RECT rc; GetClientRect(hWnd, &rc);
+        g_clientW = rc.right - rc.left;
+        g_clientH = rc.bottom - rc.top;
+
+        // notificar UIs para que se reajusten
+        g_gameUI.OnResize(g_clientW, g_clientH, 1.0f);
+        g_hud.OnResize(g_clientW, g_clientH, 1.0f);
+        g_uiMgr.FitEditorToWindow();
+        g_uiMgr.InvalidatePanel(false);
+
+        InvalidateRect(hWnd, NULL, TRUE);
+        return 0;
+    }
+
 
     case WM_COMMAND:
     {
@@ -374,7 +436,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
     case WM_ERASEBKGND:
         // evitamos el borrado del fondo por defecto para prevenir flicker
         return 1;
-                     // --- nuevos mensajes desde UI/Game ---
+        // --- nuevos mensajes desde UI/Game ---
     case MSG_START_GAME:
     {
         // ocultar paneles y poner juego en marcha
@@ -386,11 +448,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
         g_player.Reset();
 
         // TILE/worldGroundY en scope local del case
-        const float TILE = 32.0f;
+        const float TILE = TILE_SIZE;
         float worldGroundY = (g_currentLevel) ? (g_currentLevel->height * TILE) : (float)g_clientH;
-        // colocar al jugador en el spawn del nivel (si existe) o fallback al centro/ventana
+        // colocar al jugador en el spawn del nivel (usa Level::PlacePlayerAtSpawn para evitar inconsistencias)
         if (g_currentLevel) {
-            g_player.pos = Vec2(g_currentLevel->spawnX, g_currentLevel->spawnY);
+            g_currentLevel->PlacePlayerAtSpawn(g_player);
         }
         else {
             g_player.pos = Vec2((float)g_clientW * 0.5f, (float)g_clientH * 0.5f);
@@ -456,7 +518,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 
 // ---------------------------------------------------
 void UpdateBullets(float dt, float groundY) {
-    const float TILE = 32.0f;
+    const float TILE = TILE_SIZE;
     for (int i = (int)g_bullets.size() - 1; i >= 0; --i) {
         Bullet& b = g_bullets[i];
         b.life_ms -= (int)(dt * 1000.0f);
@@ -574,7 +636,7 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
 
     if (g_inGame) {
         // TILE/worldGroundY coherentes con RunGameLoop
-        const float TILE = 32.0f;
+        const float TILE = TILE_SIZE;
         float worldGroundY = (g_currentLevel) ? (g_currentLevel->height * TILE) : (float)g_clientH;
 
         int winGroundY = (int)(worldGroundY - camY);
@@ -763,7 +825,7 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
 
 // ---------------------------------------------------
 int RunGameLoop() {
-    const float TILE = 32.0f;
+    const float TILE = TILE_SIZE;
     const float NO_GROUND_Y = 1e9f; // sentinel: no hay suelo si no hay level
     const float GRAVITY = 900.0f; // px/s^2 (ajusta si quieres)
     g_prevTime = highres_clock::now();
@@ -882,69 +944,69 @@ int RunGameLoop() {
                 g_player.onGround = false;
             }
 
-                float left = g_player.pos.x - pr;
-                float right = g_player.pos.x + pr;
-                float top = g_player.pos.y - pr;
-                float bottom = g_player.pos.y + pr;
+            float left = g_player.pos.x - pr;
+            float right = g_player.pos.x + pr;
+            float top = g_player.pos.y - pr;
+            float bottom = g_player.pos.y + pr;
 
-                int minC = std::max(0, (int)std::floor(left / TILE));
-                int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
-                int minR = std::max(0, (int)std::floor(top / TILE));
-                int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
+            int minC = std::max(0, (int)std::floor(left / TILE));
+            int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
+            int minR = std::max(0, (int)std::floor(top / TILE));
+            int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
 
-                for (int r = minR; r <= maxR; ++r) {
-                    for (int c = minC; c <= maxC; ++c) {
-                        Material mat = g_currentLevel->TileMaterial(r, c);
-                        MaterialInfo mi = GetMaterialInfo(mat);
-                        if (!mi.solid) continue;
+            for (int r = minR; r <= maxR; ++r) {
+                for (int c = minC; c <= maxC; ++c) {
+                    Material mat = g_currentLevel->TileMaterial(r, c);
+                    MaterialInfo mi = GetMaterialInfo(mat);
+                    if (!mi.solid) continue;
 
-                        float tileL = c * TILE;
-                        float tileR = (c + 1) * TILE;
-                        float tileT = r * TILE;
-                        float tileB = (r + 1) * TILE;
+                    float tileL = c * TILE;
+                    float tileR = (c + 1) * TILE;
+                    float tileT = r * TILE;
+                    float tileB = (r + 1) * TILE;
 
-                        float prevLeft = prevPos.x - pr;
-                        float prevRight = prevPos.x + pr;
-                        float prevTop = prevPos.y - pr;
-                        float prevBottom = prevPos.y + pr;
+                    float prevLeft = prevPos.x - pr;
+                    float prevRight = prevPos.x + pr;
+                    float prevTop = prevPos.y - pr;
+                    float prevBottom = prevPos.y + pr;
 
-                        left = g_player.pos.x - pr;
-                        right = g_player.pos.x + pr;
-                        top = g_player.pos.y - pr;
-                        bottom = g_player.pos.y + pr;
+                    left = g_player.pos.x - pr;
+                    right = g_player.pos.x + pr;
+                    top = g_player.pos.y - pr;
+                    bottom = g_player.pos.y + pr;
 
-                        // vertical collision (desde arriba)
-                        if (prevBottom <= tileT && bottom >= tileT) {
-                            g_player.pos.y = tileT - pr - 0.01f;
-                            g_player.vel.y = 0.0f;
-                            g_player.onGround = true;
-                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
+                    // vertical collision (desde arriba)
+                    if (prevBottom <= tileT && bottom >= tileT) {
+                        g_player.pos.y = tileT - pr - 0.01f;
+                        g_player.vel.y = 0.0f;
+                        g_player.onGround = true;
+                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
+                    }
+                    // techo
+                    else if (prevTop >= tileB && top <= tileB) {
+                        g_player.pos.y = tileB + pr + 0.01f;
+                        g_player.vel.y = 0.0f;
+                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
+                    }
+
+                    // colisión horizontal derecha
+                    if (prevRight <= tileL && right >= tileL) {
+                        if (!(bottom <= tileT || top >= tileB)) {
+                            g_player.pos.x = tileL - pr - 0.01f;
+                            g_player.vel.x = 0.0f;
+                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
                         }
-                        // techo
-                        else if (prevTop >= tileB && top <= tileB) {
-                            g_player.pos.y = tileB + pr + 0.01f;
-                            g_player.vel.y = 0.0f;
-                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
-                        }
-
-                        // colisión horizontal derecha
-                        if (prevRight <= tileL && right >= tileL) {
-                            if (!(bottom <= tileT || top >= tileB)) {
-                                g_player.pos.x = tileL - pr - 0.01f;
-                                g_player.vel.x = 0.0f;
-                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
-                            }
-                        }
-                        // izquierda
-                        else if (prevLeft >= tileR && left <= tileR) {
-                            if (!(bottom <= tileT || top >= tileB)) {
-                                g_player.pos.x = tileR + pr + 0.01f;
-                                g_player.vel.x = 0.0f;
-                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
-                            }
+                    }
+                    // izquierda
+                    else if (prevLeft >= tileR && left <= tileR) {
+                        if (!(bottom <= tileT || top >= tileB)) {
+                            g_player.pos.x = tileR + pr + 0.01f;
+                            g_player.vel.x = 0.0f;
+                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
                         }
                     }
                 }
+            }
 
 
             // ---- Fallback: si NO hay nivel, UpdateMovement se ejecutó con NO_GROUND_Y,

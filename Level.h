@@ -4,6 +4,7 @@
 #include <memory>
 #include <cstdint>
 #include <tuple>
+#include "player.h"
 
 #ifdef _WIN32
 #  include <windows.h>
@@ -29,27 +30,41 @@ struct MaterialInfo {
     float friction;    // 0..1 multiplicador para movimiento
     uint32_t color;    // 0xRRGGBB para render simple
 };
+constexpr float TILE_SIZE = 48.0f; // <- aquí cambias el tamaño; antes era 32.0f
 struct LevelObject {
     char tag = '.';
     int row = 0;
     int col = 0;
 
     // devuelve posición world centrada en el tile
-    inline float WorldX(float tileSize = 32.0f) const { return col * tileSize + tileSize * 0.5f; }
-    inline float WorldY(float tileSize = 32.0f) const { return row * tileSize + tileSize * 0.5f; }
+    inline float WorldX(float tileSize = TILE_SIZE) const { return col * tileSize + tileSize * 0.5f; }
+    inline float WorldY(float tileSize = TILE_SIZE) const { return row * tileSize + tileSize * 0.5f; }
 };
 class Level {
 public:
     Level() = default;
     virtual ~Level() = default;
+    // ----- límites globales para evitar mapas "infinitos" -----
+// puedes ajustar a lo que quieras; valores recomendados
+// ancho grande (mapas largos) y altura moderada.
+    static constexpr int MAX_WIDTH = 2048;
+    static constexpr int MAX_HEIGHT = 512;
+
+    // Clamp helper para normalizar width/height antes de usarlos
+    static inline void ClampDimensions(int& w, int& h) {
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+        if (w > MAX_WIDTH) w = MAX_WIDTH;
+        if (h > MAX_HEIGHT) h = MAX_HEIGHT;
+    }
 
     int width = 0;
     int height = 0;
     std::vector<std::string> tiles;      // raw chars: tiles[row][col]
     std::vector<Material> materialGrid;  // row-major: materialGrid[r*width + c]
     std::string sky; // si vacío, usar sky por defecto o color sólido
-    float spawnX = 0.0f;
-    float spawnY = 0.0f;
+    float spawnX = -1.0f;
+    float spawnY = -1.0f;
 
     inline bool InBounds(int r, int c) const {
         return r >= 0 && r < height && c >= 0 && c < width;
@@ -79,6 +94,7 @@ public:
     void BuildMaterialGrid();
     static Material CharToMaterial(char ch);
 
+    void PlacePlayerAtSpawn(Player& p);
     // extensibilidad / hooks
     virtual void OnApply() { /* default: no-op */ }
 

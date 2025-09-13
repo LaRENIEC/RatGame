@@ -13,7 +13,7 @@
 #include <memory>
 #include <sstream>
 #include <cstdio>
-
+#include "GameUI.h"
 #include "Level.h"
 #include "TextureManager.h"
 #include "MaterialTextures.h"
@@ -32,7 +32,7 @@ enum {
     ID_ED_LEVEL_INDEX, // edit control for numeric slot
 };
 
-class LevelEditor {
+class LevelEditor : public GameUI {
 public:
     LevelEditor();
     ~LevelEditor();
@@ -83,6 +83,23 @@ private:
     int m_mouseX = 0, m_mouseY = 0; // mouse local (panel) pos for reticle
     bool m_panning = false;
     int m_panLastX = 0, m_panLastY = 0;
+    // espacio reservado para la UI a la derecha (LISTBOX etc.)
+    static const int RIGHT_PANEL_W = 360;
+    // altura ocupada por los controles superiores (botones, header)
+    static const int TOP_BAR_H = 56;
+    // margen interior para centrar/ajustar
+    static const int SIDE_MARGIN = 12;
+    // cursor de teclado dentro de la rejilla (fila/columna)
+    int m_cursorRow = 0;
+    int m_cursorCol = 0;
+
+    // helpers para redimensionar controles cuando la ventana cambia de tamaño
+    void ResizeControls();
+    // mantener el cursor dentro del viewport (ajusta m_viewOffsetX/Y si hace falta)
+    void EnsureCursorVisible();
+
+    // handler de teclado (flechas / enter / space)
+    void OnKeyDownHandler(WPARAM wParam, LPARAM lParam);
 
     void FitToWindow(); // ajusta m_tileSize + offsets para ver todo el mapa
     void OnMouseWheel(int x, int y, short delta);
