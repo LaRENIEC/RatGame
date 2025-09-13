@@ -130,6 +130,7 @@
     <ClInclude Include="framework.h" />
     <ClInclude Include="GameMovement.h" />
     <ClInclude Include="GameUI.h" />
+    <ClInclude Include="health_hud.h" />
     <ClInclude Include="hud.h" />
     <ClInclude Include="Input.h" />
     <ClInclude Include="Level.h" />
@@ -137,6 +138,8 @@
     <ClInclude Include="LevelEditor.h" />
     <ClInclude Include="MaterialTextures.h" />
     <ClInclude Include="Menu.h" />
+    <ClInclude Include="pause_hud.h" />
+    <ClInclude Include="pickups_hud.h" />
     <ClInclude Include="Pistol.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="PlayerSprite.h" />
@@ -147,6 +150,7 @@
     <ClInclude Include="TextureManager.h" />
     <ClInclude Include="UIManager.h" />
     <ClInclude Include="Weapon.h" />
+    <ClInclude Include="weapon_hud.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Boss.cpp" />
@@ -154,12 +158,15 @@
     <ClCompile Include="Entity.cpp" />
     <ClCompile Include="GameMovement.cpp" />
     <ClCompile Include="GameUI.cpp" />
+    <ClCompile Include="health_hud.cpp" />
     <ClCompile Include="hud.cpp" />
     <ClCompile Include="Level.cpp" />
     <ClCompile Include="level1.cpp" />
     <ClCompile Include="LevelEditor.cpp" />
     <ClCompile Include="MaterialTextures.cpp" />
     <ClCompile Include="Menu.cpp" />
+    <ClCompile Include="pause_hud.cpp" />
+    <ClCompile Include="pickups_hud.cpp" />
     <ClCompile Include="Pistol.cpp" />
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="PlayerSprite.cpp" />
@@ -168,6 +175,7 @@
     <ClCompile Include="TextureManager.cpp" />
     <ClCompile Include="UIManager.cpp" />
     <ClCompile Include="Weapon.cpp" />
+    <ClCompile Include="weapon_hud.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="RatGame.rc" />

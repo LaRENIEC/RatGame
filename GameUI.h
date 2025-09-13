@@ -6,6 +6,7 @@
 
 #define MSG_START_GAME        (WM_USER + 1)
 #define MSG_TOGGLE_PICKUPS    (WM_USER + 2)
+#define MSG_TOGGLE_PAUSE (WM_USER + 50)
 #define MSG_SHOW_START_MENU   (WM_USER + 3)
 
 #define ID_START_BTN          2001

@@ -28,6 +28,9 @@
     <Filter Include="Archivos de origen\Weapons">
       <UniqueIdentifier>{0c57e188-d450-4aef-99a5-967be4925806}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Archivos de origen\Hud">
+      <UniqueIdentifier>{df3894bd-1764-436f-a1c4-472c6238a1fc}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="framework.h">
@@ -99,8 +102,20 @@
     <ClInclude Include="level1.h">
       <Filter>Archivos de origen\Levels</Filter>
     </ClInclude>
+    <ClInclude Include="health_hud.h">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClInclude>
+    <ClInclude Include="weapon_hud.h">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClInclude>
+    <ClInclude Include="pickups_hud.h">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClInclude>
+    <ClInclude Include="pause_hud.h">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClInclude>
     <ClInclude Include="hud.h">
-      <Filter>Archivos de origen\GameUI</Filter>
+      <Filter>Archivos de origen\Hud</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -158,8 +173,20 @@
     <ClCompile Include="level1.cpp">
       <Filter>Archivos de origen\Levels</Filter>
     </ClCompile>
+    <ClCompile Include="health_hud.cpp">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClCompile>
+    <ClCompile Include="weapon_hud.cpp">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClCompile>
+    <ClCompile Include="pickups_hud.cpp">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClCompile>
+    <ClCompile Include="pause_hud.cpp">
+      <Filter>Archivos de origen\Hud</Filter>
+    </ClCompile>
     <ClCompile Include="hud.cpp">
-      <Filter>Archivos de origen\GameUI</Filter>
+      <Filter>Archivos de origen\Hud</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

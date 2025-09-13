@@ -31,9 +31,13 @@
 #include "UIManager.h"
 #include <windowsx.h>
 #include "hud.h"
+#include "health_hud.h"
+#include "weapon_hud.h"
+#include "pickups_hud.h"
+#include "pause_hud.h"
 
 static GameUI g_gameUI;
-
+static CompositeHUD g_hud;
 static UIManager g_uiMgr;
 // Tamaño ventana por defecto
 static const int WINDOW_W = 900;
@@ -53,7 +57,7 @@ bool g_showPickups = true;    // toggled by Options
 TextureManager g_texMgr;
 PlayerSprite g_playerSprite;
 bool g_playerSpriteLoaded = false;
-static HUD g_hud;
+
 static bool g_gamePaused = false;     // si true -> no actualizar la física/IA
 static bool g_isCrouching = false;    // estado simple de crouch (usado en colisión/visual)
 // double buffer
@@ -161,6 +165,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     ShowWindow(g_hWnd, nCmdShow);
     UpdateWindow(g_hWnd);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 
     // Inicializar GDI+
     ULONG_PTR gdiPlusToken;
@@ -186,6 +191,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     // Inicializar UIManager (paneles adicionales, p.e. LevelEditor embebido)
     g_uiMgr.Init(hInstance, g_hWnd);
+
+    g_hud.Init(g_hWnd);
+    g_hud.AddChild(std::make_unique<HealthHUD>());
+    g_hud.AddChild(std::make_unique<WeaponHUD>());
+    g_hud.AddChild(std::make_unique<PickupsHUD>(g_pickups, true));
+    g_hud.AddChild(std::make_unique<PauseHUD>());
+    g_hud.OnResize(g_clientW, g_clientH, 1.0f);
 
     g_hud.Init(g_hWnd);
     g_gameUI.OnResize(g_clientW, g_clientH, 1.0f); // si usas escalado variable
@@ -926,19 +938,46 @@ int RunGameLoop() {
         RenderFrame(hdc, camOffset);
         ReleaseDC(g_hWnd, hdc);
 
+        // ------------------------------------------------
+        // FRAME SCHEDULER (target FPS + short spin)
+        // ------------------------------------------------
+        // Ajusta este valor para usar más/menos CPU:
+        // 60 -> menos CPU (más ahorro), 120 -> más fluido, mayor uso CPU.
+        const double target_fps = 120.0; // <- ajusta aquí
+        static const auto target_frame_duration = std::chrono::duration<double>(1.0 / target_fps);
+
+        // Time point al final del frame actual
+        auto frameEnd = highres_clock::now();
+        auto frameElapsed = frameEnd - now; // cuánto tardó este frame hasta aquí
+
+        if (frameElapsed < target_frame_duration) {
+            auto remaining = target_frame_duration - frameElapsed;
+
+            // Dormimos la mayor parte del tiempo restante (si es suficientemente grande)
+            // dejando ~1ms para el spin final que corrige la imprecisión de Sleep.
+            const auto sleep_margin = std::chrono::milliseconds(1);
+
+            if (remaining > sleep_margin) {
+                auto to_sleep = remaining - sleep_margin;
+                // convertir a ms para sleep_for
+                std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::milliseconds>(to_sleep));
+            }
+
+            // Spin-wait corto para completar el tiempo restante (usa CPU pero es breve)
+            while ((highres_clock::now() - now) < target_frame_duration) {
+                // NO hacer trabajo pesado aquí; solo esperar activamente unos micro/milis.
+                // Esto aumenta el uso de CPU pero reduce jitter de frametimes.
+                // Voluntariamente vacío.
+            }
+        }
+        else {
+            // Frame tardó más que el target; no dormir.
+            // Podrías computar un frame-drop o acumular estadística aquí.
+        }
+
+        // Preparar para el siguiente tick
         g_prevTime = now;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
     } // end while
     return 0;
-}
-void HUD::Render(HDC hdc, const Player& player, const std::vector<WeaponPickup>& pickups, bool showPickups, bool paused) {
-    // implementación mínima: dibuja fondo oscuro y texto simple
-    RECT rc; GetClientRect(g_hWnd, &rc); // g_hWnd existe en RatGame.cpp
-    HBRUSH bk = CreateSolidBrush(RGB(10, 10, 10));
-    FillRect(hdc, &rc, bk);
-    DeleteObject(bk);
-
-    SetTextColor(hdc, RGB(230, 230, 230));
-    SetBkMode(hdc, TRANSPARENT);
-    DrawTextW(hdc, L"HUD::Render (stub)", -1, &rc, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 }
