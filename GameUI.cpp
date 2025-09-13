@@ -7,7 +7,16 @@
 #include "GameMovement.h"
 
 using namespace Gdiplus;
+#ifdef max
+#undef max
+#endif
 
+#ifdef min
+#undef min
+#endif
+static inline float clampf(float v, float lo, float hi) {
+    return (v < lo) ? lo : ((v > hi) ? hi : v);
+}
 static void DrawRoundedRect(Graphics& g, const RectF& r, REAL radius, Brush* brush, const Pen* pen = nullptr) {
     GraphicsPath path;
     REAL x = r.X, y = r.Y, w = r.Width, h = r.Height, d = radius * 2.0f;
@@ -26,36 +35,65 @@ void GameUI::Init(HINSTANCE hInstance, HWND mainWnd) { m_hInst = hInstance; m_ma
 void GameUI::Shutdown() { ClearPanel(); m_hInst = NULL; m_mainWnd = NULL; }
 
 void GameUI::SetupStartPanel() {
-    ClearPanel();
-    m_active = Panel::Start;
-    RECT rc; GetClientRect(m_mainWnd, &rc);
-    int gw = rc.right - rc.left, gh = rc.bottom - rc.top;
-    m_panelW = 420; m_panelH = 320;
-    m_panelX = (gw - m_panelW) / 2; m_panelY = (gh - m_panelH) / 2;
-    m_title = L"RAT GAME";
+    m_buttons.clear();
+    m_title.clear();
 
-    int bw = 260, bh = 44;
-    int bx = (m_panelW - bw) / 2, by = 80;
-    m_buttons.push_back({ {bx, by, bx + bw, by + bh}, L"Singleplayer", ID_SINGLEPLAYER_BTN });
-    m_buttons.push_back({ {bx, by + 56, bx + bw, by + 56 + bh}, L"Multiplayer", ID_MULTIPLAYER_BTN });
-    m_buttons.push_back({ {bx, by + 112, bx + bw, by + 112 + bh}, L"Extras", ID_EXTRAS_BTN });
-    m_buttons.push_back({ {bx, by + 168, bx + bw, by + 168 + bh}, L"Level Editor", ID_LEVEL_EDITOR_BTN });
+    // Tamaños relativos
+    int pad = (int)std::lround(14.0f * m_scale);
+    int btnW = (int)std::lround(160.0f * m_scale);
+    int btnH = (int)std::lround(48.0f * m_scale);
+    int spacing = (int)std::lround(12.0f * m_scale);
+
+    // Título y layout
+    m_title = L"RAT GAME";
+    int cx = m_panelX + m_panelW / 2;
+
+    // calcular posiciones Y relativas dentro del panel
+    int titleY = m_panelY + (int)std::lround(28.0f * m_scale);
+    int firstBtnY = m_panelY + (int)std::lround(110.0f * m_scale);
+
+    // helper para crear botón centrado
+    auto addBtnCentered = [&](const std::wstring& text, int id, int idx) {
+        int bx = cx - btnW / 2;
+        int by = firstBtnY + idx * (btnH + spacing);
+        Button b;
+        b.rc = { bx, by, bx + btnW, by + btnH };
+        b.text = text;
+        b.id = id;
+        b.hover = b.pressed = false;
+        m_buttons.push_back(std::move(b));
+        };
+
+    addBtnCentered(L"Start", ID_START_BTN, 0);
+    addBtnCentered(L"Levels", ID_SINGLEPLAYER_BTN, 1);
+    addBtnCentered(L"Editor", ID_LEVEL_EDITOR_BTN, 2);
+    addBtnCentered(L"Exit", ID_EXIT_BTN, 3);
 }
 
 void GameUI::SetupLevelsPanel() {
-    ClearPanel();
-    m_active = Panel::Levels;
-    RECT rc; GetClientRect(m_mainWnd, &rc);
-    int gw = rc.right - rc.left, gh = rc.bottom - rc.top;
-    m_panelW = 560; m_panelH = 420;
-    m_panelX = (gw - m_panelW) / 2; m_panelY = (gh - m_panelH) / 2;
-    m_title = L"Select Level";
+    m_buttons.clear();
+    m_title = L"Choose Level";
 
-    int bw = 120, bh = 40;
-    int bx = m_panelW - bw - 28, by = 80;
-    m_buttons.push_back({ {bx,by,bx + bw,by + bh}, L"Play", ID_LEVEL_PLAY_BTN });
-    m_buttons.push_back({ {bx,by + 56,bx + bw,by + 56 + bh}, L"Cancel", ID_LEVEL_CANCEL_BTN });
+    int pad = (int)std::lround(12.0f * m_scale);
+    int btnW = (int)std::lround(120.0f * m_scale);
+    int btnH = (int)std::lround(40.0f * m_scale);
+    int spacing = (int)std::lround(8.0f * m_scale);
+
+    int cx = m_panelX + m_panelW / 2;
+    int startY = m_panelY + (int)std::lround(100.0f * m_scale);
+
+    // Un par de botones: Play / Cancel
+    Button play;
+    play.rc = { cx - btnW - spacing / 2, startY, cx - spacing / 2, startY + btnH };
+    play.text = L"Play"; play.id = ID_LEVEL_PLAY_BTN;
+    m_buttons.push_back(play);
+
+    Button cancel;
+    cancel.rc = { cx + spacing / 2, startY, cx + btnW + spacing / 2, startY + btnH };
+    cancel.text = L"Cancel"; cancel.id = ID_LEVEL_CANCEL_BTN;
+    m_buttons.push_back(cancel);
 }
+
 
 void GameUI::ClearPanel() {
     m_buttons.clear();
@@ -64,9 +102,17 @@ void GameUI::ClearPanel() {
 }
 
 // API
-void GameUI::ShowStartPanel() { SetupStartPanel(); }
+void GameUI::ShowStartPanel() {
+    m_active = Panel::Start;
+    // si OnResize ya seteo m_scale/pos, construye la geometría
+    SetupStartPanel();
+}
+
+void GameUI::ShowLevelsPanel() {
+    m_active = Panel::Levels;
+    SetupLevelsPanel();
+}
 void GameUI::HideStartPanel() { ClearPanel(); }
-void GameUI::ShowLevelsPanel() { SetupLevelsPanel(); }
 void GameUI::HideLevelsPanel() { ClearPanel(); }
 bool GameUI::HasActivePanel() const { return m_active != Panel::None; }
 
@@ -243,11 +289,23 @@ bool GameUI::OnLButtonUp(int x, int y) {
     return true;
 }
 // OnResize implementation (single, consistent)
-void GameUI::OnResize(int w, int h, float s) {
-    m_w = w;
-    m_h = h;
+void GameUI::OnResize(int w, int h, float /*scaleParam*/) {
+    m_w = w; m_h = h;
+
+    float sx = (float)w / (float)BASE_W;
+    float sy = (float)h / (float)BASE_H;
+    float s = std::min(sx, sy);
+    s = clampf(s, UI_MIN_SCALE, UI_MAX_SCALE);
     m_scale = s;
-    // Recompute panel geometry so that input rects match new scale
+
+    // usar las constantes del header
+    m_panelW = (int)std::lround(GAMEUI_BASE_PANEL_W * m_scale);
+    m_panelH = (int)std::lround(GAMEUI_BASE_PANEL_H * m_scale);
+
+    m_panelX = (m_w - m_panelW) / 2;
+    m_panelY = (m_h - m_panelH) / 2;
+
     if (m_active == Panel::Start) SetupStartPanel();
     else if (m_active == Panel::Levels) SetupLevelsPanel();
+    else SetupStartPanel();
 }

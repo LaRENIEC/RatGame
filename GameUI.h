@@ -31,6 +31,18 @@
 
 // mensaje personalizado para mostrar el editor (elige un offset de WM_USER)
 #define MSG_SHOW_LEVEL_EDITOR (WM_USER + 200)
+
+// resolución de referencia (tu ventana por defecto)
+static const int BASE_W = 900;
+static const int BASE_H = 600;
+
+// mínimos/máximos del escalado de la UI
+static constexpr float UI_MIN_SCALE = 0.9f;   // si la ventana es ligeramente más pequeña, no achicar demasiado
+static constexpr float UI_MAX_SCALE = 2.2f;   // máximo que puede crecer la UI
+
+static constexpr int GAMEUI_BASE_PANEL_W = 520;
+static constexpr int GAMEUI_BASE_PANEL_H = 360;
+
 struct WeaponPickup;
 
 class GameUI {

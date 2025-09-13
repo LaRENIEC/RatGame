@@ -47,6 +47,12 @@ private:
     Gdiplus::Bitmap* m_leftFoot = nullptr;
     Gdiplus::Bitmap* m_rightFoot = nullptr;
 
+    // nuevas texturas para expresiones faciales
+    Gdiplus::Bitmap* m_faceNeutral = nullptr;
+    Gdiplus::Bitmap* m_faceBlink = nullptr;
+    Gdiplus::Bitmap* m_faceHurt = nullptr;
+    Gdiplus::Bitmap* m_faceDead = nullptr;
+
     // anim state
     float m_time = 0.0f;
     float m_handAngle = 0.0f; // no usado pero reservado
@@ -54,18 +60,21 @@ private:
     float m_earWiggle = 0.0f;
     float m_bob = 0.0f;
 
-    // ojos / boca procedurales
+    // ojos / boca procedurales (fallback si no hay PNG)
     float m_eyeOpenLeft = 1.0f;
     float m_eyeOpenRight = 1.0f;
     float m_mouthOpen = 0.0f;
     float m_eyeRadiusBase = 4.0f;
     float m_blinkTimer = 0.0f;
     float m_blinkInterval = 3.0f;
+    // face offset smoothing (se usa para desplazar la cara lateralmente)
+    float m_faceOffsetX = 0.0f;      // offset actual (px)
+    float m_faceResponse = 40.0f;    // velocidad de respuesta (mayor => más rápido). Ajusta a gusto.
 
     // escalas
     float m_scale = 1.0f;
     float m_bodyScale = 0.82f; // body un poco más pequeño que antes
-    float m_earScale = 1.20f;  // orejas perceptiblemente más grandes y visibles
+    float m_earScale = 2.60f;  // orejas más grandes (ajustado)
     float m_footScale = 0.45f; // pies pequeños
 
     // helpers

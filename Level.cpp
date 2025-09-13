@@ -3,19 +3,20 @@
 #include <sstream>
 #include <iostream>
 #include <algorithm>
-#include <windows.h> // GetFileAttributesA, CreateDirectoryA
+#include <cctype>
 #include <cstdio>
+#include "camera.h"
 
 #include "Player.h"
-#include "GameMovement.h" // para WeaponPickup
-#include "level1.h"
+#include "GameMovement.h" // WeaponPickup
+#include "level1.h"       // si tienes un level embebido
 
-// declara los globals que están definidos en RatGame.cpp
+// globals del juego (definidos en RatGame.cpp)
 extern Player g_player;
+static Camera g_camera;
 extern std::vector<WeaponPickup> g_pickups;
 extern std::vector<Bullet> g_bullets;
 
-// pointer global al nivel cargado
 std::unique_ptr<Level> g_currentLevel = nullptr;
 
 // ----------------------- Material table -----------------------
@@ -37,35 +38,36 @@ Material Level::CharToMaterial(char ch) {
     switch (ch) {
     case '.': return M_AIR;
     case '#': return M_DIRT;
-    case 'G': return M_DIRT; // <- 'G' ahora usa DIRT (eliminamos comportamiento/plantilla "grass")
+    case 'G': return M_DIRT;
     case 'S': return M_SAND;
     case 'V': return M_GRAVEL;
     case 'W': return M_WATER;
     case 'X': return M_SPIKES;
-    case 'A': return M_AIR; // 'A' seguirá siendo interpretado como pickup en ApplyLevel
-    case 'H': return M_AIR; // H = shotgun pickup char in map files (tile is air)
+    case 'A': return M_AIR;
+    case 'H': return M_AIR;
     case 'P': return M_AIR;
     default:  return M_UNKNOWN;
+    }
+}
+
+void Level::EnsureTilesSize() {
+    if (width <= 0 || height <= 0) return;
+    if ((int)tiles.size() != height) tiles.assign(height, std::string(width, '.'));
+    for (auto& row : tiles) {
+        if ((int)row.size() < width) row += std::string(width - (int)row.size(), '.');
+        else if ((int)row.size() > width) row.resize(width);
     }
 }
 
 void Level::BuildMaterialGrid() {
     materialGrid.clear();
     if (width <= 0 || height <= 0) return;
+    EnsureTilesSize();
     materialGrid.resize(width * height, M_AIR);
-    if ((int)tiles.size() == height) {
-        for (int r = 0; r < height; ++r) {
-            for (int c = 0; c < width; ++c) {
-                char ch = (c < (int)tiles[r].size()) ? tiles[r][c] : '.';
-                materialGrid[r * width + c] = CharToMaterial(ch);
-            }
-        }
-    }
-    else {
-        for (int r = 0; r < height; ++r) {
-            for (int c = 0; c < width; ++c) {
-                materialGrid[r * width + c] = (r == height - 1) ? M_DIRT : M_AIR;
-            }
+    for (int r = 0; r < height; ++r) {
+        for (int c = 0; c < width; ++c) {
+            char ch = tiles[r][c];
+            materialGrid[r * width + c] = CharToMaterial(ch);
         }
     }
 }
@@ -76,43 +78,75 @@ bool Level::IsSolidAtWorld(float x, float y, float tileSize) const {
     return mi.solid;
 }
 
-// ----------------------- filesystem helpers -----------------------
-static bool DirExistsA(const char* p) {
-    DWORD a = GetFileAttributesA(p);
-    return (a != INVALID_FILE_ATTRIBUTES) && (a & FILE_ATTRIBUTE_DIRECTORY);
-}
-static bool FileExistsA(const char* p) {
-    DWORD a = GetFileAttributesA(p);
-    return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-// ensure directory exists (creates if not)
-static void EnsureDirExists(const std::string& path) {
-    if (path.empty()) return;
-    if (!DirExistsA(path.c_str())) {
-        CreateDirectoryA(path.c_str(), NULL);
+// Level.cpp
+void Level::EnumerateObjects(std::vector<LevelObject>& out) const {
+    out.clear();
+    if (width <= 0 || height <= 0) return;
+    for (int r = 0; r < height; ++r) {
+        for (int c = 0; c < width; ++c) {
+            char ch = TileCharAt(r, c);
+            if (ch == '.') continue;
+            // ignore terrain tiles:
+            if (ch == '#' || ch == 'G' || ch == 'S' || ch == 'V' || ch == 'W' || ch == 'X') continue;
+            LevelObject obj;
+            obj.tag = ch;
+            obj.row = r;
+            obj.col = c;
+            out.push_back(obj);
+        }
     }
 }
 
-// ----------------------- parsing of .map files -----------------------
-// Format:
-//  # comment lines start with '#'
-//  first non-comment line: "<width> <height>"
-//  second non-comment: "<spawnX> <spawnY>"   (pixels, floats)
-//  next 'height' lines: each a string of 'width' characters for tiles
-//  extra lines ignored
-// ----------------------- parsing of .map files (extended/directive-aware) -----------------------
+// ----------------------- helpers filesystem (Win32 + fallback POSIX) -----------------------
+static bool DirExistsA(const char* p) {
+#ifdef _WIN32
+    DWORD a = GetFileAttributesA(p);
+    return (a != INVALID_FILE_ATTRIBUTES) && (a & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    if (stat(p, &st) != 0) return false;
+    return S_ISDIR(st.st_mode);
+#endif
+}
+static bool FileExistsA(const char* p) {
+#ifdef _WIN32
+    DWORD a = GetFileAttributesA(p);
+    return (a != INVALID_FILE_ATTRIBUTES) && !(a & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st;
+    if (stat(p, &st) != 0) return false;
+    return S_ISREG(st.st_mode);
+#endif
+}
+
+static void EnsureDirExists(const std::string& path) {
+    if (path.empty()) return;
+#ifdef _WIN32
+    if (!DirExistsA(path.c_str())) CreateDirectoryA(path.c_str(), NULL);
+#else
+    if (!DirExistsA(path.c_str())) {
+        // try mkdir -p behavior
+        std::string cur;
+        for (size_t i = 0; i < path.size(); ++i) {
+            cur.push_back(path[i]);
+            if (path[i] == '/' || i + 1 == path.size()) {
+                mkdir(cur.c_str(), 0755);
+            }
+        }
+    }
+#endif
+}
+
+// ----------------------- parsing of .map files (tolerante) -----------------------
 static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string& err) {
     std::string raw;
-    // Trim helper
     auto trim = [](std::string s)->std::string {
         size_t a = 0; while (a < s.size() && isspace((unsigned char)s[a])) ++a;
         size_t b = s.size(); while (b > a && isspace((unsigned char)s[b - 1])) --b;
         return s.substr(a, b - a);
         };
 
-    // read first non-empty non-comment line (comments: '#' or '//' or ';')
-    auto readNonComment = [&](std::string& out) -> bool {
+    auto readNonComment = [&](std::string& out)->bool {
         while (std::getline(ifs, out)) {
             std::string t = trim(out);
             if (t.empty()) continue;
@@ -125,36 +159,31 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
 
     if (!readNonComment(raw)) { err = "Missing level header"; return false; }
 
-    // If first token starts with '@', we are in directive mode.
     if (!raw.empty() && raw[0] == '@') {
-        // directive-mode
-        // we'll collect tile rows if @TILE_ROWS ... @END_TILE_ROWS present
-        outLevel = Level(); // reset
+        outLevel = Level();
         std::vector<std::string> tileRows;
         int expectedWidth = -1, expectedHeight = -1;
         bool inTileRows = false;
 
-        // process first line plus rest
-        auto processLine = [&](const std::string& line) {
+        auto processDirectiveLine = [&](const std::string& line) {
             if (line.empty()) return;
             if (line[0] != '@') {
-                if (inTileRows) {
-                    // append row (allow padding later)
-                    tileRows.push_back(line);
-                }
+                if (inTileRows) tileRows.push_back(line);
                 return;
             }
-            // tokenise directive
             std::istringstream iss(line);
-            std::string dir; iss >> dir; // e.g., @SIZE
+            std::string dir; iss >> dir;
             if (dir == "@SIZE") {
                 iss >> expectedWidth >> expectedHeight;
             }
             else if (dir == "@SPAWN") {
-                // accept either pixel coords or tile coords. If two ints small (<1000) assume tiles.
-                float sx = 0, sy = 0; iss >> sx >> sy;
-                // mark spawn in pixels later once TILE known; store temporarily in spawnX/Y as tiles (negative flag)
-                outLevel.spawnX = sx; outLevel.spawnY = sy;
+                iss >> outLevel.spawnX >> outLevel.spawnY;
+            }
+            else if (dir == "@SKY") {
+                std::string s;
+                if (iss >> s) {
+                    outLevel.sky = s;
+                }
             }
             else if (dir == "@TILE_ROWS") {
                 inTileRows = true;
@@ -163,104 +192,73 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
                 inTileRows = false;
             }
             else if (dir == "@PLATFORM") {
-                // @PLATFORM row col len  => we will materialize into tileRows later
                 int row = 0, col = 0, len = 0; iss >> row >> col >> len;
-                // If we don't have tileRows yet, store as temporary row entries (we'll ensure tile size later)
-                // For simplicity push a special encoded string like "#PL row col len" to tileRows vector for postprocessing
                 tileRows.push_back(std::string("#PL ") + std::to_string(row) + " " + std::to_string(col) + " " + std::to_string(len));
             }
             else if (dir == "@ENTITY" || dir == "@E") {
-                // @ENTITY <tagchar> <col> <row>
                 char tag = 'E'; int col = 0, row = 0; iss >> tag >> col >> row;
-                // encode special marker row
                 tileRows.push_back(std::string("#OBJ ") + tag + " " + std::to_string(col) + " " + std::to_string(row));
             }
             else if (dir == "@PICKUP") {
                 char tag = 'A'; int col = 0, row = 0; iss >> tag >> col >> row;
                 tileRows.push_back(std::string("#OBJ ") + tag + " " + std::to_string(col) + " " + std::to_string(row));
             }
-            // other directives can be added here...
+            
             };
 
-        // process the first directive line we read
-        processLine(raw);
-
-        // process rest of file
+        processDirectiveLine(raw);
         while (std::getline(ifs, raw)) {
             std::string t = trim(raw);
             if (t.empty()) continue;
             if (t.rfind("#", 0) == 0 || t.rfind("//", 0) == 0 || t.rfind(";", 0) == 0) continue;
-            processLine(t);
+            processDirectiveLine(t);
         }
 
-        // If expected size not set, try to deduce from tileRows
         if (expectedWidth <= 0) {
-            for (auto& r : tileRows) {
-                if (!r.empty() && r[0] == '#') continue;
-                expectedWidth = std::max<int>(expectedWidth, static_cast<int>(r.size()));
-
-            }
+            for (auto& r : tileRows) { if (!r.empty() && r[0] != '#') expectedWidth = std::max<int>(expectedWidth, (int)r.size()); }
             if (expectedWidth <= 0) expectedWidth = 120;
         }
         if (expectedHeight <= 0) {
-            // count only actual tile lines (not special encoded)
-            int cnt = 0;
-            for (auto& r : tileRows) if (r.empty() || r[0] != '#') ++cnt;
+            int cnt = 0; for (auto& r : tileRows) if (r.empty() || r[0] != '#') ++cnt;
             expectedHeight = (cnt > 0) ? cnt : 20;
         }
 
-        // create rows filled with '.'
         outLevel.width = expectedWidth;
         outLevel.height = expectedHeight;
         outLevel.tiles.assign(outLevel.height, std::string(outLevel.width, '.'));
 
-        // apply tileRows content and special markers
+        int pasteRow = 0;
         for (auto& r : tileRows) {
             if (r.empty()) continue;
             if (r.rfind("#PL ", 0) == 0) {
-                // platform directive path: parse and set '#' at given row/cols
                 std::istringstream iss(r.substr(4));
                 int row, col, len; iss >> row >> col >> len;
                 if (row >= 0 && row < outLevel.height) {
-                    for (int x = col; x < col + len && x < outLevel.width; ++x) {
-                        if (x >= 0) outLevel.tiles[row][x] = '#';
-                    }
+                    for (int x = col; x < col + len && x < outLevel.width; ++x) if (x >= 0) outLevel.tiles[row][x] = '#';
                 }
             }
             else if (r.rfind("#OBJ ", 0) == 0) {
                 std::istringstream iss(r.substr(5));
                 char tag; int col, row; iss >> tag >> col >> row;
-                if (row >= 0 && row < outLevel.height && col >= 0 && col < outLevel.width) {
-                    outLevel.tiles[row][col] = tag;
-                }
+                if (row >= 0 && row < outLevel.height && col >= 0 && col < outLevel.width) outLevel.tiles[row][col] = tag;
             }
             else {
-                // plain tile row: append into top rows (we'll put them top-down)
-                // find first empty row in tiles that consists entirely of '.' to paste into
-                int target = -1;
-                for (int tr = 0; tr < outLevel.height; ++tr) {
-                    bool allDot = true;
-                    for (char ch : outLevel.tiles[tr]) { if (ch != '.') { allDot = false; break; } }
-                    if (allDot) { target = tr; break; }
-                }
-                if (target == -1) target = 0;
+                if (pasteRow >= outLevel.height) pasteRow = outLevel.height - 1;
                 std::string src = r;
                 if ((int)src.size() < outLevel.width) src += std::string(outLevel.width - (int)src.size(), '.');
-                outLevel.tiles[target] = src.substr(0, outLevel.width);
+                outLevel.tiles[pasteRow++] = src.substr(0, outLevel.width);
             }
         }
 
-        // If spawn specified in tiles coords, convert to pixels (we expect user gave tiles coords)
         const float TILE = 32.0f;
+        // Si spawn ha sido proporcionado en directo (probablemente como tile indices en @SPAWN),
+        // convertimos a world coords siempre (centro del tile).
         if (outLevel.spawnX >= 0.0f && outLevel.spawnY >= 0.0f) {
-            // If spawn values look small it's tile coords; if large likely pixels already.
-            if (outLevel.spawnX < 1000 && outLevel.spawnY < 1000) {
-                outLevel.spawnX = outLevel.spawnX * TILE + TILE * 0.5f;
-                outLevel.spawnY = outLevel.spawnY * TILE + TILE * 0.5f;
-            }
+            // asumimos spawnX/Y como TILE indices (o números pequeños): conviértelo a mundo
+            outLevel.spawnX = outLevel.spawnX * TILE + TILE * 0.5f;
+            outLevel.spawnY = outLevel.spawnY * TILE + TILE * 0.5f;
         }
         else {
-            // fallback spawn near left-top area
             outLevel.spawnX = 2 * TILE + TILE * 0.5f;
             outLevel.spawnY = (outLevel.height - 3) * TILE + TILE * 0.5f;
         }
@@ -269,7 +267,7 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
         return true;
     }
     else {
-        // legacy format: first line "width height"
+        // legacy
         {
             std::istringstream iss(raw);
             if (!(iss >> outLevel.width >> outLevel.height)) { err = "Failed to parse width/height"; return false; }
@@ -282,7 +280,6 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
             if (!(iss >> outLevel.spawnX >> outLevel.spawnY)) { err = "Failed to parse spawnX/spawnY"; return false; }
         }
 
-        // read exact 'height' rows (skip comments/empty lines in between)
         outLevel.tiles.clear();
         while ((int)outLevel.tiles.size() < outLevel.height && std::getline(ifs, raw)) {
             size_t i = 0; while (i < raw.size() && isspace((unsigned char)raw[i])) ++i;
@@ -299,12 +296,11 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
 
 // ----------------------- LevelManager implementation -----------------------
 std::unique_ptr<Level> LevelManager::LoadLevelFromFile(const std::string& path) {
-    std::ifstream ifs(path, std::ios::in);
+    std::ifstream ifs(path.c_str(), std::ios::in);
     if (!ifs) return nullptr;
     auto L = std::make_unique<Level>();
     std::string err;
     if (!ParseLevelFromStream(ifs, *L, err)) {
-        // parse error: print to stderr for debug and return nullptr
         std::cerr << "Level parse error (" << path << "): " << err << "\n";
         return nullptr;
     }
@@ -319,34 +315,37 @@ std::unique_ptr<Level> LevelManager::LoadLevel(int levelIndex) {
     EnsureDirExists("levels");
 
     if (!FileExistsA(path.c_str())) {
-        // Si piden el level 1, devolver el built-in
         if (levelIndex == 1) {
             auto built = CreateBuiltInLevel1();
             if (built) return built;
         }
         return nullptr;
     }
-
     return LoadLevelFromFile(path);
 }
 
 bool LevelManager::SaveLevelToFile(const Level& lvl, const std::string& path) {
-    // create parent dir if necessary (simple heuristic)
-    size_t pos = path.find_first_of("/\\");
-    (void)pos;
-    EnsureDirExists("levels"); // minimal: ensure levels/ exists in typical usage
+    size_t found = path.find_last_of("/\\");
+    std::string parent = (found == std::string::npos) ? std::string("levels") : path.substr(0, found);
+    EnsureDirExists(parent);
 
-    std::ofstream ofs(path, std::ios::out | std::ios::trunc);
+    std::ofstream ofs(path.c_str(), std::ios::out | std::ios::trunc);
     if (!ofs) return false;
-    // write header and tiles
-    ofs << lvl.width << " " << lvl.height << "\n";
-    ofs << lvl.spawnX << " " << lvl.spawnY << "\n";
+
+    // uso formato de directivas (legible / editable)
+    ofs << "@SIZE " << lvl.width << " " << lvl.height << "\n";
+    ofs << "@SPAWN " << lvl.spawnX << " " << lvl.spawnY << "\n";
+    ofs << "@TILE_ROWS\n";
     for (int r = 0; r < lvl.height; ++r) {
-        std::string row;
-        if (r < (int)lvl.tiles.size()) row = lvl.tiles[r];
+        std::string row = (r < (int)lvl.tiles.size()) ? lvl.tiles[r] : std::string(lvl.width, '.');
         if ((int)row.size() < lvl.width) row += std::string(lvl.width - (int)row.size(), '.');
         ofs << row.substr(0, lvl.width) << "\n";
     }
+    if (!lvl.sky.empty()) {
+        ofs << "@SKY " << lvl.sky << "\n";
+    }
+    ofs << "@TILE_ROWS\n";
+    ofs << "@END_TILE_ROWS\n";
     ofs.close();
     return true;
 }
@@ -375,13 +374,12 @@ void LevelManager::ApplyLevel(const Level& lvl) {
     g_camera.maxX = (float)lvl.width * TILE + TILE * 2.0f;
     g_camera.maxY = (float)lvl.height * TILE + TILE * 2.0f;
 
-    // Reset player/bullets/pickups (tu código ya lo hace)
+    // Reset player/bullets/pickups
     g_player.Reset();
     g_player.pos = Vec2(lvl.spawnX, lvl.spawnY);
     g_player.vel = Vec2(0, 0);
     g_bullets.clear();
 
-    // pickups desde tiles (ya lo haces)
     g_pickups.clear();
     const float TILE_SIZE = 32.0f;
     for (int r = 0; r < lvl.height; ++r) {
@@ -393,22 +391,30 @@ void LevelManager::ApplyLevel(const Level& lvl) {
             else if (ch == 'A') g_pickups.push_back(WeaponPickup{ PISTOL, Vec2(px, py), 12 });
         }
     }
+
+    g_currentLevel->OnApply();
 }
-void Level::EnumerateObjects(std::vector<std::tuple<char, int, int>>& out) const {
-    out.clear();
-    if (width <= 0 || height <= 0) return;
 
-    for (int r = 0; r < height; ++r) {
-        for (int c = 0; c < width; ++c) {
-            char ch = TileCharAt(r, c);
-            if (ch == '.') continue; // aire -> no es objeto
-
-            // Ignorar tiles de terreno (ground/grass/etc.)
-            // Ajusta esta lista si añades nuevos tiles que NO quieras tratar como "objetos".
-            if (ch == '#' || ch == 'G' || ch == 'S' || ch == 'V' || ch == 'W' || ch == 'X') continue;
-
-            // cualquier otro carácter lo consideramos un "objeto" (E, B, A, H, etiquetas custom, ...)
-            out.emplace_back(ch, c, r);
-        }
+// list levels in "levels" directory (Windows FindFirstFileA or POSIX opendir)
+std::vector<std::string> LevelManager::ListAvailableLevels() const {
+    std::vector<std::string> out;
+#ifdef _WIN32
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA("levels\\*.map", &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) out.emplace_back(fd.cFileName);
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
     }
+#else
+    DIR* d = opendir("levels");
+    if (!d) return out;
+    struct dirent* ent;
+    while ((ent = readdir(d)) != nullptr) {
+        if (ent->d_type == DT_REG) out.emplace_back(ent->d_name);
+    }
+    closedir(d);
+#endif
+    return out;
 }

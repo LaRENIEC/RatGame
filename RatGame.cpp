@@ -35,7 +35,14 @@
 #include "weapon_hud.h"
 #include "pickups_hud.h"
 #include "pause_hud.h"
+#include "Camera.h"
+// al principio de RatGame.cpp (junto a otros globals)
+#include <gdiplus.h> // añade si no está
 
+using namespace Gdiplus;
+
+// NUEVO: puntero a la textura del sky cargada para el nivel actual
+static Gdiplus::Bitmap* g_skyBmp = nullptr;
 static GameUI g_gameUI;
 static CompositeHUD g_hud;
 static UIManager g_uiMgr;
@@ -48,6 +55,8 @@ HWND g_hWnd = NULL;
 
 // Juego - objetos principales
 Player g_player;
+static Camera g_camera;
+
 std::vector<Bullet> g_bullets;
 InputState g_input;
 Menu g_menu; // lo mantenemos como objeto ligero (no crea child windows ahora)
@@ -93,23 +102,45 @@ int RunGameLoop();
 void RenderFrame(HDC hdc, const Vec2& camOffset);
 void UpdateBullets(float dt, float groundY);
 
+// RatGame.cpp (poner junto a otros helpers/globals)
+static void LoadSkyForCurrentLevel() {
+    g_skyBmp = nullptr;
+    if (!g_currentLevel) return;
+
+    std::string skyName = g_currentLevel->sky;
+    if (skyName.empty()) {
+        std::wstring def = L"assets/sky/sky_default.png";
+        g_skyBmp = g_texMgr.Load(def);
+        return;
+    }
+
+    std::wstring ws;
+    ws.reserve(16 + skyName.size());
+    ws = L"assets/sky/";
+    ws.append(skyName.begin(), skyName.end()); // asume ASCII/simple names
+
+    g_skyBmp = g_texMgr.Load(ws);
+
+    if (!g_skyBmp) {
+        std::wstring def = L"assets/sky/sky_default.png";
+        g_skyBmp = g_texMgr.Load(def);
+    }
+}
+
 // --- helpers para entitites spawned from level ----------
 static void SpawnEntitiesFromCurrentLevel() {
     g_entities.clear();
     if (!g_currentLevel) return;
 
     const float TILE = 32.0f;
-
-    std::vector<std::tuple<char, int, int>> objs;
+    std::vector<LevelObject> objs;
     g_currentLevel->EnumerateObjects(objs);
 
-    for (auto& t : objs) {
-        char ch; int r, c;
-        std::tie(ch, r, c) = t;
-        float px = c * TILE + TILE / 2.0f;
-        float py = r * TILE + TILE / 2.0f;
+    for (auto& obj : objs) {
+        float px = obj.WorldX(TILE);
+        float py = obj.WorldY(TILE);
 
-        if (ch == 'E') {
+        if (obj.tag == 'E') {
             auto e = std::make_unique<Enemy>();
             e->pos = Vec2(px, py);
             e->vel = Vec2(0, 0);
@@ -117,15 +148,14 @@ static void SpawnEntitiesFromCurrentLevel() {
             e->patrolRightX = px + 80.0f;
             g_entities.push_back(std::move(e));
         }
-        else if (ch == 'B') {
+        else if (obj.tag == 'B') {
             auto b = std::make_unique<Boss>();
             b->pos = Vec2(px, py - 10.0f);
             b->vel = Vec2(0, 0);
             g_entities.push_back(std::move(b));
         }
-        else if (ch == 'A' || ch == 'H') {
-            // pickups are already placed by LevelManager::ApplyLevel into g_pickups,
-            // but we leave object markers here if you prefer spawning from tiles too.
+        else if (obj.tag == 'A' || obj.tag == 'H') {
+            // pickups los añadimos ya en ApplyLevel, pero podrías spawnarlos aquí si lo prefieres
         }
     }
 }
@@ -208,12 +238,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // no creamos child windows.
 
     // Inicializar player (o esperar al ApplyLevel)
+// colocar al jugador en el spawn del nivel (si existe) o fallback al centro/ventana
     if (g_currentLevel) {
         g_player.pos = Vec2(g_currentLevel->spawnX, g_currentLevel->spawnY);
     }
     else {
-        g_player.pos = Vec2(WINDOW_W * 0.5f, WINDOW_H * 0.5f);
+        // si no hay nivel, colocamos al jugador en el centro de la ventana
+        g_player.pos = Vec2((float)g_clientW * 0.5f, (float)g_clientH * 0.5f);
     }
+    g_player.vel = Vec2(0, 0); // reset velocidad
 
     // Lanzar loop principal (bloqueante)
     int res = RunGameLoop();
@@ -263,6 +296,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             if (lvl) {
                 g_levelManager.ApplyLevel(*lvl);
                 SpawnEntitiesFromCurrentLevel();
+                // cargar sky que el nivel pide (assets/sky/<nombre>)
+                LoadSkyForCurrentLevel();
                 // ocultar paneles del GameUI y empezar juego
                 g_gameUI.HideLevelsPanel();
                 g_inGame = true;
@@ -358,13 +393,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
             g_player.pos = Vec2(g_currentLevel->spawnX, g_currentLevel->spawnY);
         }
         else {
-            // si no hay nivel, colocamos al jugador en el centro de la ventana
             g_player.pos = Vec2((float)g_clientW * 0.5f, (float)g_clientH * 0.5f);
         }
-        g_player.vel = Vec2(0, 0); // reset velocidad
+        g_player.vel = Vec2(0, 0);
 
-        // colocar al jugador en el ground del nivel (o fallback)
-        g_player.pos = Vec2(g_clientW * 0.5f, worldGroundY);
+        // Snap camera to player so it doesn't lerp from 0,0
+        g_camera.SnapTo(g_player.pos, g_clientW, g_clientH);
 
         g_bullets.clear();
 
@@ -504,11 +538,16 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
     ReleaseDC(g_hWnd, hdcScreen);
     HDC buf = g_backDC;
 
-    // Background (siempre) - dibujar pantalla entera sin offset
-    HBRUSH bg = CreateSolidBrush(RGB(20, 28, 40));
-    RECT rc = { 0,0,g_clientW,g_clientH };
-    FillRect(buf, &rc, bg);
-    DeleteObject(bg);
+    // Background (si hay sky, usar TextureManager para estirar el bmp; si no, fallback color sólido)
+    if (g_skyBmp) {
+        g_texMgr.Draw(g_skyBmp, buf, 0, 0, g_clientW, g_clientH);
+    }
+    else {
+        HBRUSH bg = CreateSolidBrush(RGB(20, 28, 40));
+        RECT rc = { 0,0,g_clientW,g_clientH };
+        FillRect(buf, &rc, bg);
+        DeleteObject(bg);
+    }
 
     // Si hay un panel modal creado por GameUI, no dibujamos el mundo
     // Si hay un panel modal creado por GameUI o UIManager, dibujamos el panel (modal) y no el mundo
@@ -932,8 +971,22 @@ int RunGameLoop() {
         } // end if g_inGame
 
         // Render (siempre)
-        g_camera.Update(g_player.pos, dt, g_clientW, g_clientH);
+        g_camera.SnapTo(g_player.pos, g_clientW, g_clientH);
         Vec2 camOffset = g_camera.GetOffset(g_clientW, g_clientH);
+
+        // Muerte por caída estilo Geometry Dash / Mario:
+        // Si el jugador baja más allá del bottom visible + margin -> muerte instantánea.
+        const float fallKillMargin = 160.0f; // px; ajusta a tu gusto
+        float worldBottomVisible = camOffset.y + (float)g_clientH;
+
+        // puedes usar el 'radius' del jugador si lo tienes; aquí uso ~12 como aproximado
+        const float playerRadiusApprox = 12.0f;
+        if (g_player.pos.y - playerRadiusApprox > worldBottomVisible + fallKillMargin) {
+            if (g_player.IsAlive()) {
+                g_player.ApplyDamage(g_player.health, Vec2(0, 0)); // mata al jugador inmediatamente
+            }
+        }
+
         HDC hdc = GetDC(g_hWnd);
         RenderFrame(hdc, camOffset);
         ReleaseDC(g_hWnd, hdc);

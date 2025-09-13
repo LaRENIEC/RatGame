@@ -3,7 +3,12 @@
 #include <vector>
 #include <string>
 #include <memory>
-
+#ifdef max
+#undef max
+#endif
+#ifdef min
+#undef min
+#endif
 // Generador procedural del level 1: ancho grande, plataformas, enemigos y boss.
 std::unique_ptr<Level> CreateBuiltInLevel1() {
     const int TILE = 32;

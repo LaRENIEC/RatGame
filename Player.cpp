@@ -6,7 +6,8 @@
 #include "gdiplusgraphics.h"
 #pragma comment(lib, "gdiplus.lib") // si no lo pones en otro lado, ayuda para linkear
 using std::make_unique;
-
+#include "Level.h"
+#include "GameUI.h"
 // NO uses 'using namespace Gdiplus;' to avoid nombre ambiguos.
 // Referenciamos tipos GDI+ con su namespace completo: Gdiplus::Bitmap, Gdiplus::Graphics
 // --- añadir al inicio del fichero Player.cpp (o justo antes de las funciones) ---
@@ -20,11 +21,11 @@ static const float MUZZLE_FORWARD = 28.0f; // distancia desde el "muzzle origin"
 #ifdef max
 #undef max
 #endif
-#include "GameUI.h"
+
 #ifdef min
 #undef min
 #endif
-#include "Level.h"
+
 static GameUI g_gameUI;
 Player::Player() {
     pos = Vec2(400.0f, 400.0f);

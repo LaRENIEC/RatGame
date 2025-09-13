@@ -176,7 +176,9 @@ void LevelEditor::RegisterClassIfNeeded() {
 bool LevelEditor::CreateEditorWindow() {
     if (!m_hParent) return false;
     RECT rc; GetClientRect(m_hParent, &rc);
-    int w = 680, h = 480;
+
+    // nuevo tamaño por defecto: más grande
+    int w = 1000, h = 720;
     int x = (rc.right - w) / 2;
     int y = (rc.bottom - h) / 2;
 
@@ -197,24 +199,33 @@ void LevelEditor::CreateControls() {
     if (!m_hWnd) return;
     RECT rc; GetClientRect(m_hWnd, &rc);
     int w = rc.right - rc.left;
+    int h = rc.bottom - rc.top;
 
+    // botones más grandes y posicionados relativo al cliente
+    int btnW = 110, btnH = 32, spacing = 12;
+    int left = 12;
     m_hBtnNew = CreateWindowW(L"BUTTON", L"New", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        10, 10, 70, 28, m_hWnd, (HMENU)ID_ED_BTN_NEW, m_hInst, NULL);
+        left, 10, btnW, btnH, m_hWnd, (HMENU)ID_ED_BTN_NEW, m_hInst, NULL);
     m_hBtnLoad = CreateWindowW(L"BUTTON", L"Load", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        90, 10, 70, 28, m_hWnd, (HMENU)ID_ED_BTN_LOAD, m_hInst, NULL);
+        left + (btnW + spacing), 10, btnW, btnH, m_hWnd, (HMENU)ID_ED_BTN_LOAD, m_hInst, NULL);
     m_hBtnSave = CreateWindowW(L"BUTTON", L"Save", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        170, 10, 70, 28, m_hWnd, (HMENU)ID_ED_BTN_SAVE, m_hInst, NULL);
+        left + 2 * (btnW + spacing), 10, btnW, btnH, m_hWnd, (HMENU)ID_ED_BTN_SAVE, m_hInst, NULL);
     m_hBtnFit = CreateWindowW(L"BUTTON", L"Fit", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        250, 10, 70, 28, m_hWnd, (HMENU)ID_ED_BTN_FIT, m_hInst, NULL);
+        left + 3 * (btnW + spacing), 10, btnW, btnH, m_hWnd, (HMENU)ID_ED_BTN_FIT, m_hInst, NULL);
 
     CreateWindowW(L"STATIC", L"Slot:", WS_CHILD | WS_VISIBLE,
-        330, 12, 34, 20, m_hWnd, NULL, m_hInst, NULL);
+        left + 4 * (btnW + spacing) + 6, 12, 40, 20, m_hWnd, NULL, m_hInst, NULL);
     m_hLevelIndex = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
-        370, 10, 48, 24, m_hWnd, (HMENU)ID_ED_LEVEL_INDEX, m_hInst, NULL);
+        left + 4 * (btnW + spacing) + 50, 10, 60, 24, m_hWnd, (HMENU)ID_ED_LEVEL_INDEX, m_hInst, NULL);
 
+    // Tile list a la derecha con ancho fijo mayor (más espacio)
+    int tileListW = 360;
+    int tileListX = std::max(w - tileListW - 12, left + 4 * (btnW + spacing) + 120);
     m_hTileList = CreateWindowW(L"LISTBOX", NULL, WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL,
-        w - 300, 10, 280, 200, m_hWnd, (HMENU)ID_ED_TILE_LIST, m_hInst, NULL);
+        tileListX, 10, tileListW, std::max(200, h - 80), m_hWnd, (HMENU)ID_ED_TILE_LIST, m_hInst, NULL);
 
+    // llenar palette
+    SendMessageW(m_hTileList, LB_RESETCONTENT, 0, 0);
     for (auto& p : m_palette) {
         std::wstring label = p.second + L" (" + std::wstring(1, p.first) + L")";
         SendMessageW(m_hTileList, LB_ADDSTRING, 0, (LPARAM)label.c_str());
@@ -223,7 +234,6 @@ void LevelEditor::CreateControls() {
     SendMessage(m_hTileList, LB_SETCURSEL, def, 0);
     m_currentTile = m_palette[def].first;
 }
-
 void LevelEditor::DestroyControls() {
     if (m_hBtnNew) { DestroyWindow(m_hBtnNew); m_hBtnNew = NULL; }
     if (m_hBtnLoad) { DestroyWindow(m_hBtnLoad); m_hBtnLoad = NULL; }

@@ -5,7 +5,13 @@
 #include <cstdint>
 #include <tuple>
 
-// Material como enum no-scoped (mejor compatibilidad con viejos ajustes)
+#ifdef _WIN32
+#  include <windows.h>
+#else
+#  include <dirent.h>
+#endif
+
+// Material como enum no-scoped
 enum Material {
     M_AIR = 0,
     M_GRASS,
@@ -23,7 +29,15 @@ struct MaterialInfo {
     float friction;    // 0..1 multiplicador para movimiento
     uint32_t color;    // 0xRRGGBB para render simple
 };
+struct LevelObject {
+    char tag = '.';
+    int row = 0;
+    int col = 0;
 
+    // devuelve posición world centrada en el tile
+    inline float WorldX(float tileSize = 32.0f) const { return col * tileSize + tileSize * 0.5f; }
+    inline float WorldY(float tileSize = 32.0f) const { return row * tileSize + tileSize * 0.5f; }
+};
 class Level {
 public:
     Level() = default;
@@ -33,6 +47,7 @@ public:
     int height = 0;
     std::vector<std::string> tiles;      // raw chars: tiles[row][col]
     std::vector<Material> materialGrid;  // row-major: materialGrid[r*width + c]
+    std::string sky; // si vacío, usar sky por defecto o color sólido
     float spawnX = 0.0f;
     float spawnY = 0.0f;
 
@@ -58,25 +73,17 @@ public:
         return TileMaterial(r, c);
     }
 
-    // Devuelve true si la posición mundo (x,y) cae en un tile sólido
     bool IsSolidAtWorld(float x, float y, float tileSize) const;
 
     // builder helpers
     void BuildMaterialGrid();
     static Material CharToMaterial(char ch);
 
-    // --------------------
     // extensibilidad / hooks
-    // --------------------
-    // Permite que derivados cambien comportamiento al aplicarse el nivel.
     virtual void OnApply() { /* default: no-op */ }
 
-    // EnumerateObjects: devuelve una lista de (char tag, tileRow, tileCol).
-    // El caller (RatGame) creará entidades según el tag (E,B, pickups, etc).
-    // Puedes overridear para generar enemigos procedurales, spawns dinámicos, etc.
-    virtual void EnumerateObjects(std::vector<std::tuple<char, int, int>>& out) const;
+    virtual void EnumerateObjects(std::vector<LevelObject>& out) const;
 
-    // helper utilitario para que implementaciones puedan añadir una fila de tiles
     void EnsureTilesSize();
 };
 
@@ -84,24 +91,16 @@ public:
 class LevelManager {
 public:
     LevelManager() {}
-    // carga "levels/levelNN.map" por index; devuelve nullptr si no existe o parse error
     std::unique_ptr<Level> LoadLevel(int levelIndex);
-
-    // carga un level a partir de una ruta concreta (path absoluto o relativa)
     std::unique_ptr<Level> LoadLevelFromFile(const std::string& path);
-
-    // guarda level en archivo (crea carpeta si hace falta). devuelve true si OK
     bool SaveLevelToFile(const Level& lvl, const std::string& path);
-
-    // helper: crea un Level a partir de un array de strings (utile para convertir ascii -> file)
     static std::unique_ptr<Level> CreateLevelFromAscii(const std::vector<std::string>& rows, float spawnX, float spawnY);
-
-    // aplica nivel (mismo comportamiento que tenías antes)
     void ApplyLevel(const Level& lvl);
+
+    // lista nombres de ficheros dentro de "levels" (por ejemplo "level01.map")
+    std::vector<std::string> ListAvailableLevels() const;
 };
 
-// global pointer al nivel cargado
 extern std::unique_ptr<Level> g_currentLevel;
 
-// consulta de propiedades por material
 MaterialInfo GetMaterialInfo(Material m);
