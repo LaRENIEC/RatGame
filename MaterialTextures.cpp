@@ -5,10 +5,11 @@
 
 using namespace Gdiplus;
 
-// mapa estático de Material -> ruta relativa al ejecutable
+    { M_GRASS, L"assets/materials/grass.png" },
+    { M_ICE, L"assets/materials/ice.png" }, // <- grass usa la textura dirt para "quitar template grass"
 static std::map<Material, std::wstring> s_matToPath = {
     { M_AIR, L"assets/materials/air.png" },
-    // Eliminamos la textura específica de "grass": apuntamos grass al mismo recurso que dirt
+    // Eliminamos la textura especÃ­fica de "grass": apuntamos grass al mismo recurso que dirt
     { M_GRASS, L"assets/materials/grass.png" }, // <- grass usa la textura dirt para "quitar template grass"
     { M_SAND, L"assets/materials/sand.png" },
     { M_DIRT, L"assets/materials/dirt.png" },
@@ -28,7 +29,7 @@ void InitMaterialTextures(TextureManager& tm) {
         const std::wstring& p = kv.second;
         Bitmap* bmp = tm.Load(p);
         // tm.Load siempre intenta crear un fallback si no encuentra la imagen,
-        // por lo que bmp rara vez será nullptr. Igual comprobamos.
+        // por lo que bmp rara vez serÃ¡ nullptr. Igual comprobamos.
         s_loaded[m] = bmp;
     }
 }

@@ -19,6 +19,7 @@
 #include "Pistol.h"
 #include "Shotgun.h"
 #include "Level.h"
+#include "Tile.h"
 #include "PlayerSprite.h"
 #include "TextureManager.h"
 
@@ -46,6 +47,8 @@ static Gdiplus::Bitmap* g_skyBmp = nullptr;
 static GameUI g_gameUI;
 static CompositeHUD g_hud;
 static UIManager g_uiMgr;
+static HBRUSH g_bulletBrush = NULL;
+static HBRUSH g_pickupBrush = NULL;
 // Tamaño ventana por defecto
 static const int WINDOW_W = 900;
 static const int WINDOW_H = 600;
@@ -234,6 +237,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     // inicializar texturas/materials
     InitMaterialTextures(g_texMgr);
+    InitTileRenderer(g_texMgr);
+    if (!g_bulletBrush) g_bulletBrush = CreateSolidBrush(RGB(255, 220, 60));
+    if (!g_pickupBrush) g_pickupBrush = CreateSolidBrush(RGB(180, 80, 20));
 
     // mostrar mensaje si faltan texturas (antes de iniciar el juego)
     g_texMgr.ReportMissingTextures(g_hWnd);
@@ -278,6 +284,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     if (g_backDC) { DeleteDC(g_backDC); g_backDC = NULL; }
     if (g_backBmp) { DeleteObject(g_backBmp); g_backBmp = NULL; }
     g_gameUI.Shutdown();
+    ShutdownTileRenderer();
+    if (g_bulletBrush) { DeleteObject(g_bulletBrush); g_bulletBrush = NULL; }
+    if (g_pickupBrush) { DeleteObject(g_pickupBrush); g_pickupBrush = NULL; }
     Gdiplus::GdiplusShutdown(gdiPlusToken);
     return res;
 }
@@ -635,6 +644,10 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
     float camY = camOffset.y;
 
     if (g_inGame) {
+        int viewL = (int)camX - 64;
+        int viewR = (int)(camX + g_clientW) + 64;
+        int viewT = (int)camY - 64;
+        int viewB = (int)(camY + g_clientH) + 64;
         // TILE/worldGroundY coherentes con RunGameLoop
         const float TILE = TILE_SIZE;
         float worldGroundY = (g_currentLevel) ? (g_currentLevel->height * TILE) : (float)g_clientH;
@@ -647,63 +660,35 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
     //   FillRect(buf, &grect, ground);
     //   DeleteObject(ground);
 
-        // Tile rendering usando texturas (si hay nivel)
+        // Tile rendering optimizado (culling + cache en Tile.cpp)
         if (g_currentLevel) {
-            for (int r = 0; r < g_currentLevel->height; ++r) {
-                for (int c = 0; c < g_currentLevel->width; ++c) {
-                    char ch = g_currentLevel->TileCharAt(r, c);
-                    if (ch == '.') continue;
-                    Material m = Level::CharToMaterial(ch);
-
-                    // obtener bitmap para el material
-                    Gdiplus::Bitmap* bmp = GetMaterialTexture(m);
-                    int sx = (int)(c * TILE - camX);
-                    int sy = (int)(r * TILE - camY);
-
-                    if (bmp) {
-                        g_texMgr.Draw(bmp, buf, sx, sy, (int)TILE, (int)TILE);
-                    }
-                    else {
-                        MaterialInfo mi = GetMaterialInfo(m);
-                        uint32_t col = mi.color;
-                        int rr = (col >> 16) & 0xFF;
-                        int gg = (col >> 8) & 0xFF;
-                        int bb = (col) & 0xFF;
-                        HBRUSH b = CreateSolidBrush(RGB(rr, gg, bb));
-                        RECT tr = { sx, sy, sx + (int)TILE, sy + (int)TILE };
-                        FillRect(buf, &tr, b);
-                        DeleteObject(b);
-                    }
-                }
-            }
+            RenderVisibleTiles(buf, *g_currentLevel, camX, camY, g_clientW, g_clientH);
         }
 
         // Draw bullets (offset por la cámara)
-        HBRUSH bcol = CreateSolidBrush(RGB(255, 220, 60));
-        HGDIOBJ oldBrush = SelectObject(buf, bcol);
+        HGDIOBJ oldBrush = SelectObject(buf, g_bulletBrush);
         for (auto& b : g_bullets) {
+            if (b.pos.x < viewL || b.pos.x > viewR || b.pos.y < viewT || b.pos.y > viewB) continue;
             int bx = (int)(b.pos.x - camX);
             int by = (int)(b.pos.y - camY);
             Ellipse(buf, bx - 3, by - 3, bx + 3, by + 3);
         }
         SelectObject(buf, oldBrush);
-        DeleteObject(bcol);
 
         // Draw pickups (offset)
         if (g_showPickups) {
-            HBRUSH pickupBrush = CreateSolidBrush(RGB(180, 80, 20));
-            HGDIOBJ oldBrush2 = SelectObject(buf, pickupBrush);
+            HGDIOBJ oldBrush2 = SelectObject(buf, g_pickupBrush);
             for (auto& pk : g_pickups) {
+                if (pk.pos.x < viewL || pk.pos.x > viewR || pk.pos.y < viewT || pk.pos.y > viewB) continue;
                 RECT pr = {
                     (int)(pk.pos.x - 10 - camX),
                     (int)(pk.pos.y - 10 - camY),
                     (int)(pk.pos.x + 10 - camX),
                     (int)(pk.pos.y + 10 - camY)
                 };
-                FillRect(buf, &pr, pickupBrush);
+                FillRect(buf, &pr, g_pickupBrush);
             }
             SelectObject(buf, oldBrush2);
-            DeleteObject(pickupBrush);
         }
 
         // ------------------- Dibujado de entidades / player (coordenadas mundo usando GDI) -------------------

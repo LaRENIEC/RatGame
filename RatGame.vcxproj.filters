@@ -120,6 +120,9 @@
     <ClInclude Include="Camera.h">
       <Filter>Archivos de origen\Player</Filter>
     </ClInclude>
+    <ClInclude Include="Tile.h">
+      <Filter>Archivos de origen\Levels</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="RatGame.cpp">
@@ -193,6 +196,9 @@
     </ClCompile>
     <ClCompile Include="Camera.cpp">
       <Filter>Archivos de origen\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="Tile.cpp">
+      <Filter>Archivos de origen\Levels</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -19,6 +19,7 @@ LevelEditor::LevelEditor() {
     m_palette.push_back({ '.', L"Air" });
     m_palette.push_back({ '#', L"Dirt" });
     m_palette.push_back({ 'G', L"Grass" });
+    m_palette.push_back({ 'I', L"Ice" });
     m_palette.push_back({ 'S', L"Sand" });
     m_palette.push_back({ 'V', L"Gravel" });
     m_palette.push_back({ 'W', L"Water" });
@@ -118,15 +119,15 @@ void LevelEditor::FitToWindow() {
     int tilesW = m_editLevel->width;
     int tilesH = m_editLevel->height;
 
-    // determinar tileSize para que quepan todos los tiles en el ·rea utilizable
+    // determinar tileSize para que quepan todos los tiles en el √°rea utilizable
     int tileW = std::max(6, usableW / tilesW);
     int tileH = std::max(6, usableH / tilesH);
     m_tileSize = std::min(tileW, tileH);
 
-    // Si el nivel es muy pequeÒo y cabe holgado, no dejar tileSize excesivo
+    // Si el nivel es muy peque√±o y cabe holgado, no dejar tileSize excesivo
     if (m_tileSize > 128) m_tileSize = 128;
 
-    // centrar el grid **dentro del ·rea utilizable** (no sobre toda la ventana)
+    // centrar el grid **dentro del √°rea utilizable** (no sobre toda la ventana)
     int totalPxW = tilesW * m_tileSize;
     int totalPxH = tilesH * m_tileSize;
 
@@ -226,7 +227,7 @@ bool LevelEditor::CreateEditorWindow() {
 void LevelEditor::ResizeControls() {
     if (!m_hWnd) return;
 
-    // Para simplicidad reproducimos la lÛgica de CreateControls: destruimos y recreamos
+    // Para simplicidad reproducimos la l√≥gica de CreateControls: destruimos y recreamos
     DestroyControls();
     CreateControls();
 }
@@ -242,7 +243,7 @@ void LevelEditor::CreateControls() {
     int w = rc.right - rc.left;
     int h = rc.bottom - rc.top;
 
-    // botones m·s grandes y posicionados relativo al cliente
+    // botones m√°s grandes y posicionados relativo al cliente
     int btnW = 110, btnH = 32, spacing = 12;
     int left = 12;
     m_hBtnNew = CreateWindowW(L"BUTTON", L"New", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -259,10 +260,10 @@ void LevelEditor::CreateControls() {
     m_hLevelIndex = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
         left + 4 * (btnW + spacing) + 50, 10, 60, 24, m_hWnd, (HMENU)ID_ED_LEVEL_INDEX, m_hInst, NULL);
 
-    // Tile list a la derecha con ancho fijo mayor (m·s espacio) - usar constante RIGHT_PANEL_W
+    // Tile list a la derecha con ancho fijo mayor (m√°s espacio) - usar constante RIGHT_PANEL_W
     int tileListW = RIGHT_PANEL_W;
     int tileListX = std::max(w - tileListW - SIDE_MARGIN, left + 4 * (btnW + spacing) + 120);
-    // colocar la lista empezando un poco m·s abajo (debajo de la barra superior)
+    // colocar la lista empezando un poco m√°s abajo (debajo de la barra superior)
     int tileListY = 10;
     int tileListH = std::max(200, h - (TOP_BAR_H + SIDE_MARGIN));
     m_hTileList = CreateWindowW(L"LISTBOX", NULL, WS_CHILD | WS_VISIBLE | LBS_NOTIFY | WS_VSCROLL,
@@ -287,7 +288,7 @@ void LevelEditor::DestroyControls() {
 }
 
 void LevelEditor::NewEmptyLevel(int w, int h) {
-    // clamp a lÌmites razonables definidos en Level
+    // clamp a l√≠mites razonables definidos en Level
     Level::ClampDimensions(w, h);
 
     m_editLevel = std::make_unique<Level>();
@@ -418,7 +419,7 @@ void LevelEditor::EnsureCursorVisible() {
     int clientW = rc.right - rc.left;
     int clientH = rc.bottom - rc.top;
 
-    // ·rea disponible para el grid (igual que en FitToWindow)
+    // √°rea disponible para el grid (igual que en FitToWindow)
     int areaLeft = SIDE_MARGIN;
     int areaTop = TOP_BAR_H;
     int areaRight = clientW - SIDE_MARGIN - RIGHT_PANEL_W;
@@ -436,7 +437,7 @@ void LevelEditor::EnsureCursorVisible() {
 
     int dx = 0, dy = 0;
 
-    // aseg˙rate que la celda no quede fuera del ·rea visible (dejamos m·rgenes de 8px)
+    // aseg√∫rate que la celda no quede fuera del √°rea visible (dejamos m√°rgenes de 8px)
     const int M = 8;
     if (cellLeft < areaLeft + M) dx = (areaLeft + M) - cellLeft;
     else if (cellRight > areaRight - M) dx = (areaRight - M) - cellRight;
@@ -596,7 +597,7 @@ LRESULT LevelEditor::WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
     {
         // recrear/reajustar controles y ajustar vista
         ResizeControls();
-        FitToWindow(); // opcional: ajustar el tileSize para ver todo al cambiar tamaÒo
+        FitToWindow(); // opcional: ajustar el tileSize para ver todo al cambiar tama√±o
         InvalidateRect(hwnd, NULL, FALSE);
         return 0;
     }
