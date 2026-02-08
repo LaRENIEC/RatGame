@@ -20,14 +20,7 @@ Entity::Entity()
 Entity::~Entity() {}
 
 // -----------------------------------------------------------------------------
-// Helper: resuelve colisiones de entidad contra tiles s髄idos del nivel.
-// Se basa en un AABB approximado tomando radius como semilado.
-// Ajusta pos y vel de la entidad (por ejemplo, pone vel.y = 0 al aterrizar).
-// -----------------------------------------------------------------------------
-// Entity.cpp - Replace ResolveTileCollisions with this optimized implementation
-void Entity::ResolveTileCollisions(Entity& ent, float /*dt*/) {
-    if (!g_currentLevel) return;
-    const float TILE = TILE_SIZE; // usar la constante global TILE_SIZE
+        return IsSolidChar(ch);
     Level* L = g_currentLevel.get();
     if (!L) return;
 
@@ -41,10 +34,10 @@ void Entity::ResolveTileCollisions(Entity& ent, float /*dt*/) {
         t = cy - hh; b = cy + hh;
         };
 
-    // check r醦ido si un char de tile es s髄ido (evita GetMaterialInfo y llamadas costosas)
+    // check r谩pido si un char de tile es s贸lido (evita GetMaterialInfo y llamadas costosas)
     auto isTileCharSolid = [](char ch) -> bool {
-        // seg鷑 tu mapping: '#' 'G' 'S' 'V' 'X' son s髄idos; 'W' es agua (no s髄ido), '.' y letras de objetos no s髄idos
-        // Ajusta si tu mapa tiene otros chars s髄idos.
+        // seg煤n tu mapping: '#' 'G' 'S' 'V' 'X' son s贸lidos; 'W' es agua (no s贸lido), '.' y letras de objetos no s贸lidos
+        // Ajusta si tu mapa tiene otros chars s贸lidos.
         switch (ch) {
         case '#': case 'G': case 'S': case 'V': case 'X':
             return true;
@@ -61,7 +54,7 @@ void Entity::ResolveTileCollisions(Entity& ent, float /*dt*/) {
     int minR = std::max(0, (int)std::floor(t / TILE));
     int maxR = std::min(L->height - 1, (int)std::floor(b / TILE));
 
-    // One-pass MTV resolution (suficiente para la mayor韆 de entidades; menos trabajo que m鷏tiples passes)
+    // One-pass MTV resolution (suficiente para la mayor铆a de entidades; menos trabajo que m煤ltiples passes)
     for (int rr = minR; rr <= maxR; ++rr) {
         for (int cc = minC; cc <= maxC; ++cc) {
             char tileCh = L->TileCharAt(rr, cc);

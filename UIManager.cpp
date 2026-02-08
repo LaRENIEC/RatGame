@@ -13,7 +13,8 @@
 #ifdef min
 #undef min
 #endif
-// Externs de tu proyecto (asegúrate que existan en otros CPPs)
+    m_palette.push_back({ 'I', L"Ice" });
+// Externs de tu proyecto (asegÃºrate que existan en otros CPPs)
 extern TextureManager g_texMgr;
 extern LevelManager g_levelManager;
 
@@ -156,7 +157,7 @@ void UIManager::ShowLevelEditorPanel() {
     m_panelW = gw;
     m_panelH = gh;
 
-    SetupLevelEditorPanel(); // Los botones se posicionan en función de m_panelW ahora
+    SetupLevelEditorPanel(); // Los botones se posicionan en funciÃ³n de m_panelW ahora
     // ensure editor has at least an empty level to edit
     if (!m_editLevel) NewEmptyLevel(40, 15);
     InvalidatePanel(false);
@@ -400,7 +401,7 @@ void UIManager::PaintLevelEditor(Gdiplus::Graphics& g, HDC hdc) {
 
     // Dynamic layout: paleta ocupa 26% del ancho (clamped), grid el resto.
     const float paletteDesired = 260.0f;
-    float palW = clampf(paletteDesired, 160.0f, (float)m_panelW * 0.4f); // mínimo 160, máximo 40% ancho
+    float palW = clampf(paletteDesired, 160.0f, (float)m_panelW * 0.4f); // mÃ­nimo 160, mÃ¡ximo 40% ancho
     RectF paletteRect(px + 18.0f, py + 64.0f, palW, (REAL)(m_panelH - 100));
     SolidBrush listBg(Color(255, 22, 26, 36));
     Pen listBorder(Color(180, 30, 30, 30), 1.0f);
@@ -498,7 +499,7 @@ void UIManager::PaintLevelEditor(Gdiplus::Graphics& g, HDC hdc) {
 }
 
 // Convierte coords locales del panel a acciones: palette click o paint en grid.
-// retorna true si consumió el click
+// retorna true si consumiÃ³ el click
 bool UIManager::Editor_HandleClick(int lx, int ly) {
     // compute dynamic palette and grid areas (same logic as in PaintLevelEditor)
     int palX = 18;
