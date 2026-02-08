@@ -880,7 +880,8 @@ int RunGameLoop() {
 
             // Llamamos UpdateMovement: si no hay level, worldGroundY = NO_GROUND_Y -> no suelo.
             // (asumimos que UpdateMovement aplica controles horizontales y gravedad usando el groundY comparado)
-            UpdateMovement(g_player, g_input, dt, g_clientW, worldGroundY, playerNewBullets);
+            const float worldWidth = (g_currentLevel) ? (g_currentLevel->width * TILE) : (float)g_clientW;
+            UpdateMovement(g_player, g_input, dt, (int)worldWidth, worldGroundY, playerNewBullets);
 
             // registrar balas del jugador
             for (auto& b : playerNewBullets) {
@@ -895,6 +896,10 @@ int RunGameLoop() {
 
             // Update entities (pueden generar balas propias)
             std::vector<Bullet> entNewBullets;
+            for (auto& entPtr : g_entities) {
+                if (!entPtr) continue;
+                entPtr->Update(dt, g_player, entNewBullets);
+            }
             // Simple entity-vs-entity separation (run after entity updates)
             for (size_t i = 0; i < g_entities.size(); ++i) {
                 for (size_t j = i + 1; j < g_entities.size(); ++j) {
@@ -939,73 +944,73 @@ int RunGameLoop() {
             if (g_currentLevel) {
                 // dt (segundos) lo calculas arriba; aquí lo pasamos
                 g_player.ResolveTileCollisions(dt);
-            }
-            else {
-                g_player.onGround = false;
-            }
 
-            float left = g_player.pos.x - pr;
-            float right = g_player.pos.x + pr;
-            float top = g_player.pos.y - pr;
-            float bottom = g_player.pos.y + pr;
+                float left = g_player.pos.x - pr;
+                float right = g_player.pos.x + pr;
+                float top = g_player.pos.y - pr;
+                float bottom = g_player.pos.y + pr;
 
-            int minC = std::max(0, (int)std::floor(left / TILE));
-            int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
-            int minR = std::max(0, (int)std::floor(top / TILE));
-            int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
+                int minC = std::max(0, (int)std::floor(left / TILE));
+                int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
+                int minR = std::max(0, (int)std::floor(top / TILE));
+                int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
 
-            for (int r = minR; r <= maxR; ++r) {
-                for (int c = minC; c <= maxC; ++c) {
-                    Material mat = g_currentLevel->TileMaterial(r, c);
-                    MaterialInfo mi = GetMaterialInfo(mat);
-                    if (!mi.solid) continue;
+                for (int r = minR; r <= maxR; ++r) {
+                    for (int c = minC; c <= maxC; ++c) {
+                        Material mat = g_currentLevel->TileMaterial(r, c);
+                        MaterialInfo mi = GetMaterialInfo(mat);
+                        if (!mi.solid) continue;
 
-                    float tileL = c * TILE;
-                    float tileR = (c + 1) * TILE;
-                    float tileT = r * TILE;
-                    float tileB = (r + 1) * TILE;
+                        float tileL = c * TILE;
+                        float tileR = (c + 1) * TILE;
+                        float tileT = r * TILE;
+                        float tileB = (r + 1) * TILE;
 
-                    float prevLeft = prevPos.x - pr;
-                    float prevRight = prevPos.x + pr;
-                    float prevTop = prevPos.y - pr;
-                    float prevBottom = prevPos.y + pr;
+                        float prevLeft = prevPos.x - pr;
+                        float prevRight = prevPos.x + pr;
+                        float prevTop = prevPos.y - pr;
+                        float prevBottom = prevPos.y + pr;
 
-                    left = g_player.pos.x - pr;
-                    right = g_player.pos.x + pr;
-                    top = g_player.pos.y - pr;
-                    bottom = g_player.pos.y + pr;
+                        left = g_player.pos.x - pr;
+                        right = g_player.pos.x + pr;
+                        top = g_player.pos.y - pr;
+                        bottom = g_player.pos.y + pr;
 
-                    // vertical collision (desde arriba)
-                    if (prevBottom <= tileT && bottom >= tileT) {
-                        g_player.pos.y = tileT - pr - 0.01f;
-                        g_player.vel.y = 0.0f;
-                        g_player.onGround = true;
-                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
-                    }
-                    // techo
-                    else if (prevTop >= tileB && top <= tileB) {
-                        g_player.pos.y = tileB + pr + 0.01f;
-                        g_player.vel.y = 0.0f;
-                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
-                    }
-
-                    // colisión horizontal derecha
-                    if (prevRight <= tileL && right >= tileL) {
-                        if (!(bottom <= tileT || top >= tileB)) {
-                            g_player.pos.x = tileL - pr - 0.01f;
-                            g_player.vel.x = 0.0f;
-                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                        // vertical collision (desde arriba)
+                        if (prevBottom <= tileT && bottom >= tileT) {
+                            g_player.pos.y = tileT - pr - 0.01f;
+                            g_player.vel.y = 0.0f;
+                            g_player.onGround = true;
+                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
                         }
-                    }
-                    // izquierda
-                    else if (prevLeft >= tileR && left <= tileR) {
-                        if (!(bottom <= tileT || top >= tileB)) {
-                            g_player.pos.x = tileR + pr + 0.01f;
-                            g_player.vel.x = 0.0f;
-                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                        // techo
+                        else if (prevTop >= tileB && top <= tileB) {
+                            g_player.pos.y = tileB + pr + 0.01f;
+                            g_player.vel.y = 0.0f;
+                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
+                        }
+
+                        // colisión horizontal derecha
+                        if (prevRight <= tileL && right >= tileL) {
+                            if (!(bottom <= tileT || top >= tileB)) {
+                                g_player.pos.x = tileL - pr - 0.01f;
+                                g_player.vel.x = 0.0f;
+                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                            }
+                        }
+                        // izquierda
+                        else if (prevLeft >= tileR && left <= tileR) {
+                            if (!(bottom <= tileT || top >= tileB)) {
+                                g_player.pos.x = tileR + pr + 0.01f;
+                                g_player.vel.x = 0.0f;
+                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                            }
                         }
                     }
                 }
+            }
+            else {
+                g_player.onGround = false;
             }
 
 
