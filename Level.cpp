@@ -54,7 +54,7 @@ void Level::BuildMaterialGrid() {
 
 bool Level::IsSolidAtWorld(float x, float y, float tileSize) const {
     Material m = MaterialAtWorld(x, y, tileSize);
-    MaterialInfo mi = GetMaterialInfo(m);
+    Tile mi = GetTile(m);
     return mi.solid;
 }
 
@@ -114,7 +114,7 @@ void Level::PlacePlayerAtSpawn(Player& p) {
         for (int r = 0; r < height; ++r) {
             for (int c = 0; c < width; ++c) {
                 Material m = TileMaterial(r, c);
-                if (!GetMaterialInfo(m).solid) {
+                if (!GetTile(m).solid) {
                     p.pos = Vec2(c * TILE + TILE * 0.5f, r * TILE + TILE * 0.5f);
                     p.vel = Vec2(0.0f, 0.0f);
                     return;

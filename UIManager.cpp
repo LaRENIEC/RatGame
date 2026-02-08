@@ -13,7 +13,6 @@
 #ifdef min
 #undef min
 #endif
-    m_palette.push_back({ 'I', L"Ice" });
 // Externs de tu proyecto (asegúrate que existan en otros CPPs)
 extern TextureManager g_texMgr;
 extern LevelManager g_levelManager;
@@ -30,6 +29,7 @@ UIManager::UIManager() {
     m_palette.push_back({ 'V', L"Gravel" });
     m_palette.push_back({ 'W', L"Water" });
     m_palette.push_back({ 'X', L"Spikes" });
+    m_palette.push_back({ 'I', L"Ice" });
     m_palette.push_back({ 'H', L"Shotgun pickup" });
     m_palette.push_back({ 'A', L"Pistol pickup" });
     m_palette.push_back({ 'E', L"Enemy spawn" });
@@ -465,7 +465,7 @@ void UIManager::PaintLevelEditor(Gdiplus::Graphics& g, HDC hdc) {
                 g_texMgr.Draw(bmp, hdc, x, y, m_tileSize, m_tileSize);
             }
             else {
-                MaterialInfo mi = GetMaterialInfo(mat);
+                Tile mi = GetTile(mat);
                 int rr = (mi.color >> 16) & 0xFF;
                 int gg = (mi.color >> 8) & 0xFF;
                 int bb = (mi.color) & 0xFF;

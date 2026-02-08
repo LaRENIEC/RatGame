@@ -20,9 +20,10 @@ Entity::Entity()
 Entity::~Entity() {}
 
 // -----------------------------------------------------------------------------
-        return IsSolidChar(ch);
+void Entity::ResolveTileCollisions(Entity& ent, float /*dt*/) {
     Level* L = g_currentLevel.get();
     if (!L) return;
+    const float TILE = TILE_SIZE;
 
     // convertimos radius a half extents
     const float hw = ent.radius;
@@ -34,7 +35,7 @@ Entity::~Entity() {}
         t = cy - hh; b = cy + hh;
         };
 
-    // check rápido si un char de tile es sólido (evita GetMaterialInfo y llamadas costosas)
+    // check rápido si un char de tile es sólido (evita GetTile y llamadas costosas)
     auto isTileCharSolid = [](char ch) -> bool {
         // según tu mapping: '#' 'G' 'S' 'V' 'X' son sólidos; 'W' es agua (no sólido), '.' y letras de objetos no sólidos
         // Ajusta si tu mapa tiene otros chars sólidos.
