@@ -360,7 +360,7 @@ void LevelEditor::Paint(HDC hdc) {
                 g_texMgr.Draw(bmp, hdc, x, y, m_tileSize, m_tileSize);
             }
             else {
-                MaterialInfo mi = GetMaterialInfo(mat);
+                Tile mi = GetTile(mat);
                 int rr = (mi.color >> 16) & 0xFF;
                 int gg = (mi.color >> 8) & 0xFF;
                 int bb = (mi.color) & 0xFF;

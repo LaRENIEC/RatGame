@@ -10,11 +10,11 @@ using std::make_unique;
 #include "GameUI.h"
 // NO uses 'using namespace Gdiplus;' to avoid nombre ambiguos.
 // Referenciamos tipos GDI+ con su namespace completo: Gdiplus::Bitmap, Gdiplus::Graphics
-// --- aÒadir al inicio del fichero Player.cpp (o justo antes de las funciones) ---
+// --- a√±adir al inicio del fichero Player.cpp (o justo antes de las funciones) ---
 static const float MUZZLE_Y = -20.0f; // offset vertical desde player.pos (pies) hasta el "ojo/muzzle"
 static const float MUZZLE_FORWARD = 28.0f; // distancia desde el "muzzle origin" hacia delante
 // forward-declare weapon concrete classes constructors are in Weapon.cpp
-#include "Weapon.h" // solo aquÌ, en CPP, para poder crear Pistol/Shotgun
+#include "Weapon.h" // solo aqu√≠, en CPP, para poder crear Pistol/Shotgun
 #include <wtypes.h>
 #include "Pistol.h"
 #include "Shotgun.h"
@@ -47,10 +47,10 @@ Player::Player() {
     damage_flash_ms = 0;
     EquipWeapon(weaponType);
 
-    // ---- collider size (AABB) en funciÛn del TILE_SIZE global ----
-    // Ajusta estas fracciones si quieres que el jugador sea m·s estrecho/alto.
+    // ---- collider size (AABB) en funci√≥n del TILE_SIZE global ----
+    // Ajusta estas fracciones si quieres que el jugador sea m√°s estrecho/alto.
     collisionHalfW = TILE_SIZE * 0.28f; // ~0.56 tiles ancho
-    collisionHalfH = TILE_SIZE * 0.45f; // ~0.9 tiles alto (aj˙stalo)
+    collisionHalfH = TILE_SIZE * 0.45f; // ~0.9 tiles alto (aj√∫stalo)
 }
 
 Player::~Player() {}
@@ -69,13 +69,13 @@ void Player::Update(int dt_ms) {
     // actualizar recarga
     UpdateReload(dt_ms);
 
-    // movimiento b·sico (si no est·s aplicando fÌsica en otro sitio)
-    // aquÌ solo integramos velocidad a la posiciÛn
+    // movimiento b√°sico (si no est√°s aplicando f√≠sica en otro sitio)
+    // aqu√≠ solo integramos velocidad a la posici√≥n
     float dt = dt_ms * 0.001f;
     pos.x += vel.x * dt;
     pos.y += vel.y * dt;
 
-    // aplicar fricciÛn simple cuando en tierra
+    // aplicar fricci√≥n simple cuando en tierra
     if (onGround) {
         vel.x *= 0.95f;
     }
@@ -84,16 +84,16 @@ void Player::Update(int dt_ms) {
         vel.y += 980.0f * dt; // pixels / s^2
     }
 
-    // Ragdoll: integrar rotaciÛn corporal con amortiguaciÛn
+    // Ragdoll: integrar rotaci√≥n corporal con amortiguaci√≥n
     if (ragdoll) {
-        // si todavÌa no tenemos bodyAngle, inicializarlo con angle
+        // si todav√≠a no tenemos bodyAngle, inicializarlo con angle
         // (esto se hace en OnDeath, pero por seguridad:)
         // integrar velocidad angular
         bodyAngle += angularVelocity * (float)dt_ms;
-        // amortiguaciÛn (reduce velocidad angular over time)
+        // amortiguaci√≥n (reduce velocidad angular over time)
         const float damping = 0.995f; // por ms (suave), ajustar al gusto
         angularVelocity *= powf(damping, dt_ms);
-        // si la velocidad es muy pequeÒa, estabilizar
+        // si la velocidad es muy peque√±a, estabilizar
         if (fabsf(angularVelocity) < 1e-4f) angularVelocity = 0.0f;
     }
 }
@@ -117,7 +117,7 @@ void Player::Reset() {
     weapon.reset();
     EquipWeapon(weaponType);
 
-    // Recalcular collider tambiÈn al resetear
+    // Recalcular collider tambi√©n al resetear
     collisionHalfW = TILE_SIZE * 0.28f;
     collisionHalfH = TILE_SIZE * 0.45f;
 }
@@ -199,7 +199,7 @@ void Player::Draw(HDC hdc, Gdiplus::Bitmap* /*playerBmp*/) {
     DeleteObject(body);
     DeleteObject(outline);
 
-    // ojo (si quieres parpadear/flash por daÒo puedes cambiar color)
+    // ojo (si quieres parpadear/flash por da√±o puedes cambiar color)
     Vec2 eye = Vec2(drawX + cosf(drawAngle) * size * 0.45f, drawY + sinf(drawAngle) * size * 0.45f);
     HBRUSH eyeBrush = CreateSolidBrush(RGB(10, 10, 10));
     old = SelectObject(hdc, eyeBrush);
@@ -235,7 +235,7 @@ void Player::OnRagdollMouseUp(int /*mouseX*/, int /*mouseY*/) {
 }
 void Player::StartReload() {
     if (isReloading) return;
-    // decide quÈ arma recargar (si tiene esa arma)
+    // decide qu√© arma recargar (si tiene esa arma)
     WeaponType wt = weaponType;
     // Si el jugador no tiene la weaponType seleccionada (ej shotgun), cambia a pistola
     if (wt == SHOTGUN && !hasShotgun) wt = PISTOL;
@@ -254,7 +254,7 @@ void Player::StartReload() {
         magSize = tmp.GetMagazineSize();
     }
 
-    // comprobar si ya est· lleno o no hay reserva
+    // comprobar si ya est√° lleno o no hay reserva
     int& magRef = (wt == PISTOL) ? pistolMag : shotgunMag;
     int& resRef = (wt == PISTOL) ? pistolReserve : shotgunReserve;
     if (magRef >= magSize) return;
@@ -271,7 +271,7 @@ void Player::UpdateReload(int dt_ms) {
     reload_ms_remaining = std::max<int>(0, reload_ms_remaining - dt_ms);
     if (reload_ms_remaining > 0) return;
 
-    // transferir municiÛn de reserva al cargador
+    // transferir munici√≥n de reserva al cargador
     if (reloadWeapon == PISTOL) {
         Pistol tmp; int magSize = tmp.GetMagazineSize();
         int need = magSize - pistolMag;
@@ -290,7 +290,7 @@ void Player::UpdateReload(int dt_ms) {
     isReloading = false;
     reload_ms_remaining = 0;
 }
-// ---------- daÒo / muerte ----------
+// ---------- da√±o / muerte ----------
 void Player::ApplyDamage(int amount, const Vec2& source) {
     if (!alive) return;
     if (amount <= 0) return;
@@ -346,7 +346,7 @@ void Player::ResolveTileCollisions(float dt) {
     const float hh = collisionHalfH;
 
     const float eps = 0.001f;
-    // stepHeight relativo al TILE (permitir subir pequeÒos escalones)
+    // stepHeight relativo al TILE (permitir subir peque√±os escalones)
     const float stepHeight = std::min((float)TILE * 0.5f, 16.0f);
 
     auto getAABB = [&](float cx, float cy, float& l, float& t, float& r, float& b) {
@@ -370,7 +370,7 @@ void Player::ResolveTileCollisions(float dt) {
 
     bool anyGround = false;
 
-    // Haremos hasta N passes para resolver penetraciones m˙ltiples (normalmente 2-3 bastan)
+                if (!GetTile(m).solid) continue;
     const int MAX_PASSES = 4;
     for (int pass = 0; pass < MAX_PASSES; ++pass) {
         getAABB(pos.x, pos.y, l, t, r, b);
@@ -389,7 +389,7 @@ void Player::ResolveTileCollisions(float dt) {
                 float tl, tt, tr_, tb;
                 tileAABB(rr, cc, tl, tt, tr_, tb);
 
-                // IntersecciÛn AABB
+                // Intersecci√≥n AABB
                 float ix0 = std::max(l, tl);
                 float iy0 = std::max(t, tt);
                 float ix1 = std::min(r, tr_);
@@ -401,7 +401,7 @@ void Player::ResolveTileCollisions(float dt) {
                     float overlapX = ix1 - ix0;
                     float overlapY = iy1 - iy0;
 
-                    // Resolver por mÌnima penetraciÛn (MTV)
+                    // Resolver por m√≠nima penetraci√≥n (MTV)
                     if (overlapX < overlapY) {
                         // desplazar en X
                         float tileCenterX = (tl + tr_) * 0.5f;
@@ -419,18 +419,18 @@ void Player::ResolveTileCollisions(float dt) {
                         // desplazar en Y
                         float tileCenterY = (tt + tb) * 0.5f;
                         if (pos.y < tileCenterY) {
-                            // jugador arriba del tile -> aterrizÛ encima
+                            // jugador arriba del tile -> aterriz√≥ encima
                             pos.y -= (overlapY + eps);
                             if (vel.y > 0.0f) vel.y = 0.0f;
                             anyGround = true;
                         }
                         else {
-                            // jugador debajo -> choquÈ la cabeza
+                            // jugador debajo -> choqu√© la cabeza
                             pos.y += (overlapY + eps);
                             if (vel.y < 0.0f) vel.y = 0.0f;
                         }
                     }
-                    // recomputar AABB localmente (siguiente iteraciÛn de tiles usar· nueva pos)
+                    // recomputar AABB localmente (siguiente iteraci√≥n de tiles usar√° nueva pos)
                     getAABB(pos.x, pos.y, l, t, r, b);
                 }
             }
@@ -449,7 +449,7 @@ void Player::ResolveTileCollisions(float dt) {
         int cRight = std::min(L->width - 1, (int)std::floor(checkRightX / TILE));
         int rowBelow = std::min(L->height - 1, (int)std::floor(b / TILE));
 
-        // detectar si hay un bloque inmediatamente al lado que nos impidiÛ avanzar
+        // detectar si hay un bloque inmediatamente al lado que nos impidi√≥ avanzar
         bool blockedLeft = false, blockedRight = false;
         auto intersectsTile = [&](float ax0, float ay0, float ax1, float ay1, int tr, int tc)->bool {
             float tl, tt, tr_, tb; tileAABB(tr, tc, tl, tt, tr_, tb);
@@ -480,14 +480,14 @@ void Player::ResolveTileCollisions(float dt) {
             bool coll = false;
             for (int rr = minR2; rr <= maxR2 && !coll; ++rr) {
                 for (int cc = minC2; cc <= maxC2; ++cc) {
-                    if (!GetMaterialInfo(L->TileMaterial(rr, cc)).solid) continue;
+                    if (!GetTile(L->TileMaterial(rr, cc)).solid) continue;
                     if (intersectsTile(tl, tt, tr_, tb, rr, cc)) { coll = true; break; }
                 }
             }
             if (!coll) {
                 // subir
                 pos.y = tryY;
-                // despuÈs de subir, intentar "aterrizar" en bloque bajo
+                    if (!GetTile(L->TileMaterial(rr, cc)).solid) continue;
                 getAABB(pos.x, pos.y, l, t, r, b);
                 int rr = std::min(L->height - 1, (int)std::floor(b / TILE));
                 for (int cc = std::max(0, (int)std::floor(l / TILE)); cc <= std::min(L->width - 1, (int)std::floor(r / TILE)); ++cc) {

@@ -1,6 +1,6 @@
 #include "Tile.h"
 
-MaterialInfo GetMaterialInfo(Material m) {
+Tile GetTile(Material m) {
     switch (m) {
     case M_GRASS:   return { "Grass",  true,  0.85f, 0x4CAF50, true,  false, 0 };
     case M_SAND:    return { "Sand",   true,  0.65f, 0xD2B48C, true,  false, 0 };
@@ -52,7 +52,7 @@ bool IsSolidChar(char ch) {
     if (!init) {
         for (int i = 0; i < 256; ++i) {
             Material m = CharToMaterial(static_cast<char>(i));
-            solidTable[i] = GetMaterialInfo(m).solid;
+            solidTable[i] = GetTile(m).solid;
         }
         init = true;
     }

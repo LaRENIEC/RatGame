@@ -16,7 +16,8 @@ enum Material {
 
 constexpr int MATERIAL_COUNT = M_UNKNOWN + 1;
 
-struct MaterialInfo {
+class Tile {
+public:
     const char* name;
     bool solid;        // bloque que colisiona
     float friction;    // 0..1 multiplicador para movimiento
@@ -26,7 +27,7 @@ struct MaterialInfo {
     int damage;        // daño que causa al contacto (si aplica)
 };
 
-MaterialInfo GetMaterialInfo(Material m);
+Tile GetTile(Material m);
 Material CharToMaterial(char ch);
 bool IsTerrainChar(char ch);
 bool IsSolidChar(char ch);

@@ -127,7 +127,7 @@ static void InitRenderResources() {
 
     for (int mi = 0; mi < MATERIAL_COUNT; ++mi) {
         if (g_materialBrushes[mi]) continue;
-        MaterialInfo info = GetMaterialInfo(static_cast<Material>(mi));
+        Tile info = GetTile(static_cast<Material>(mi));
         uint32_t col = info.color;
         int rr = (col >> 16) & 0xFF;
         int gg = (col >> 8) & 0xFF;
@@ -1011,7 +1011,7 @@ int RunGameLoop() {
                 for (int r = minR; r <= maxR; ++r) {
                     for (int c = minC; c <= maxC; ++c) {
                         Material mat = g_currentLevel->TileMaterial(r, c);
-                        MaterialInfo mi = GetMaterialInfo(mat);
+                        Tile mi = GetTile(mat);
                         if (!mi.solid) continue;
 
                         float tileL = c * TILE;
