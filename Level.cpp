@@ -25,35 +25,9 @@ extern std::vector<Bullet> g_bullets;
 
 std::unique_ptr<Level> g_currentLevel = nullptr;
 
-// ----------------------- Material table -----------------------
-MaterialInfo GetMaterialInfo(Material m) {
-    switch (m) {
-    case M_GRASS:   return { "Grass",  true,  0.85f, 0x4CAF50 };
-    case M_SAND:    return { "Sand",   true,  0.65f, 0xD2B48C };
-    case M_DIRT:    return { "Dirt",   true,  0.9f,  0x7B5A2B };
-    case M_GRAVEL:  return { "Gravel", true,  0.8f,  0x808080 };
-    case M_WATER:   return { "Water",  false, 0.4f,  0x2196F3 };
-    case M_SPIKES:  return { "Spikes", true,  0.2f,  0xB71C1C };
-    case M_AIR:     return { "Air",    false, 1.0f,  0x14181A };
-    default:        return { "Unknown", false, 1.0f, 0xFF00FF };
-    }
-}
-
 // ----------------------- Material mapping -----------------------
 Material Level::CharToMaterial(char ch) {
-    switch (ch) {
-    case '.': return M_AIR;
-    case '#': return M_DIRT;
-    case 'G': return M_DIRT;
-    case 'S': return M_SAND;
-    case 'V': return M_GRAVEL;
-    case 'W': return M_WATER;
-    case 'X': return M_SPIKES;
-    case 'A': return M_AIR;
-    case 'H': return M_AIR;
-    case 'P': return M_AIR;
-    default:  return M_UNKNOWN;
-    }
+    return ::CharToMaterial(ch);
 }
 
 void Level::EnsureTilesSize() {
@@ -93,7 +67,7 @@ void Level::EnumerateObjects(std::vector<LevelObject>& out) const {
             char ch = TileCharAt(r, c);
             if (ch == '.') continue;
             // ignore terrain tiles:
-            if (ch == '#' || ch == 'G' || ch == 'S' || ch == 'V' || ch == 'W' || ch == 'X') continue;
+            if (IsTerrainChar(ch)) continue;
             LevelObject obj;
             obj.tag = ch;
             obj.row = r;
@@ -102,7 +76,7 @@ void Level::EnumerateObjects(std::vector<LevelObject>& out) const {
         }
     }
 }
-// asegúrate de tener #include "Player.h" en este CPP (ya lo tienes según tu paste)
+// asegÃºrate de tener #include "Player.h" en este CPP (ya lo tienes segÃºn tu paste)
 void Level::PlacePlayerAtSpawn(Player& p) {
     const float TILE = TILE_SIZE;
 
@@ -112,7 +86,7 @@ void Level::PlacePlayerAtSpawn(Player& p) {
             if (TileCharAt(r, c) == 'P') {
                 p.pos = Vec2(c * TILE + TILE * 0.5f, r * TILE + TILE * 0.5f);
                 p.vel = Vec2(0.0f, 0.0f);
-                // si por alguna razón el punto queda dentro de tile sólido, intentar elevarlo
+                // si por alguna razÃ³n el punto queda dentro de tile sÃ³lido, intentar elevarlo
                 int tries = 0;
                 while (tries < 8 && IsSolidAtWorld(p.pos.x, p.pos.y, TILE)) {
                     p.pos.y -= TILE; // subir un tile
@@ -135,7 +109,7 @@ void Level::PlacePlayerAtSpawn(Player& p) {
         p.vel = Vec2(0.0f, 0.0f);
     }
 
-    // 3) Si dicho punto está dentro de sólido, buscar el primer tile no sólido (escaneo simple)
+    // 3) Si dicho punto estÃ¡ dentro de sÃ³lido, buscar el primer tile no sÃ³lido (escaneo simple)
     if (IsSolidAtWorld(p.pos.x, p.pos.y, TILE)) {
         for (int r = 0; r < height; ++r) {
             for (int c = 0; c < width; ++c) {
@@ -276,7 +250,7 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
             expectedHeight = (cnt > 0) ? cnt : 20;
         }
 
-        // clamp a límites globales (evitar anchos/altos absurdos)
+        // clamp a lÃ­mites globales (evitar anchos/altos absurdos)
         Level::ClampDimensions(expectedWidth, expectedHeight);
 
         outLevel.width = expectedWidth;
@@ -311,7 +285,7 @@ static bool ParseLevelFromStream(std::istream& ifs, Level& outLevel, std::string
         // Si spawn ha sido proporcionado en directo (probablemente como tile indices en @SPAWN),
         // convertimos a world coords siempre (centro del tile).
         if (outLevel.spawnX >= 0.0f && outLevel.spawnY >= 0.0f) {
-            // asumimos spawnX/Y como TILE indices (o números pequeños): conviértelo a mundo
+            // asumimos spawnX/Y como TILE indices (o nÃºmeros pequeÃ±os): conviÃ©rtelo a mundo
             outLevel.spawnX = outLevel.spawnX * TILE + TILE * 0.5f;
             outLevel.spawnY = outLevel.spawnY * TILE + TILE * 0.5f;
         }
@@ -435,9 +409,9 @@ std::unique_ptr<Level> LevelManager::CreateLevelFromAscii(const std::vector<std:
 void LevelManager::ApplyLevel(const Level& lvl) {
     g_currentLevel = std::make_unique<Level>(lvl);
 
-    // Ajusta bounds de cámara aquí (coinciden con tile size en render/logic)
     const float TILE = TILE_SIZE;
-    g_camera.minX = -TILE * 2.0f;
+            float px = c * TILE + TILE / 2.0f;
+            float py = r * TILE + TILE / 2.0f;
     g_camera.minY = -TILE * 1.0f;
     g_camera.maxX = (float)lvl.width * TILE + TILE * 2.0f;
     g_camera.maxY = (float)lvl.height * TILE + TILE * 2.0f;
@@ -445,7 +419,7 @@ void LevelManager::ApplyLevel(const Level& lvl) {
     // Reset player/bullets/pickups
     g_player.Reset();
     // colocar jugador usando el player-start del nivel (primero busca 'P', si no existe usa spawnX/spawnY)
-    g_currentLevel = std::make_unique<Level>(lvl); // (ya haces esto más arriba; si no, mantenlo)
+    g_currentLevel = std::make_unique<Level>(lvl); // (ya haces esto mÃ¡s arriba; si no, mantenlo)
     g_currentLevel->OnApply(); // si tu OnApply hace algo importante
     g_currentLevel->PlacePlayerAtSpawn(g_player);
 

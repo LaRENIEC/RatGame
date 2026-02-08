@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <string>
 #include <memory>
+#include <array>
 #include <cstdio>
 
 #include "Player.h"
@@ -49,6 +50,14 @@ static UIManager g_uiMgr;
 // Tamaño ventana por defecto
 static const int WINDOW_W = 900;
 static const int WINDOW_H = 600;
+
+static HBRUSH g_bulletBrush = NULL;
+static HBRUSH g_pickupBrush = NULL;
+static HBRUSH g_backgroundBrush = NULL;
+static HBRUSH g_healthBackBrush = NULL;
+static HBRUSH g_healthFillBrush = NULL;
+static HFONT g_titleFont = NULL;
+static std::array<HBRUSH, MATERIAL_COUNT> g_materialBrushes = {};
 
 HINSTANCE g_hInst = NULL;
 HWND g_hWnd = NULL;
@@ -101,6 +110,46 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 int RunGameLoop();
 void RenderFrame(HDC hdc, const Vec2& camOffset);
 void UpdateBullets(float dt, float groundY);
+
+static void InitRenderResources() {
+    if (!g_bulletBrush) g_bulletBrush = CreateSolidBrush(RGB(255, 220, 60));
+    if (!g_pickupBrush) g_pickupBrush = CreateSolidBrush(RGB(180, 80, 20));
+    if (!g_backgroundBrush) g_backgroundBrush = CreateSolidBrush(RGB(20, 28, 40));
+    if (!g_healthBackBrush) g_healthBackBrush = CreateSolidBrush(RGB(40, 40, 40));
+    if (!g_healthFillBrush) g_healthFillBrush = CreateSolidBrush(RGB(200, 40, 40));
+
+    if (!g_titleFont) {
+        g_titleFont = CreateFontW(
+            (int)(60.0f * g_uiScale), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
+            DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    }
+
+    for (int mi = 0; mi < MATERIAL_COUNT; ++mi) {
+        if (g_materialBrushes[mi]) continue;
+        MaterialInfo info = GetMaterialInfo(static_cast<Material>(mi));
+        uint32_t col = info.color;
+        int rr = (col >> 16) & 0xFF;
+        int gg = (col >> 8) & 0xFF;
+        int bb = col & 0xFF;
+        g_materialBrushes[mi] = CreateSolidBrush(RGB(rr, gg, bb));
+    }
+}
+
+static void ShutdownRenderResources() {
+    if (g_bulletBrush) { DeleteObject(g_bulletBrush); g_bulletBrush = NULL; }
+    if (g_pickupBrush) { DeleteObject(g_pickupBrush); g_pickupBrush = NULL; }
+    if (g_backgroundBrush) { DeleteObject(g_backgroundBrush); g_backgroundBrush = NULL; }
+    if (g_healthBackBrush) { DeleteObject(g_healthBackBrush); g_healthBackBrush = NULL; }
+    if (g_healthFillBrush) { DeleteObject(g_healthFillBrush); g_healthFillBrush = NULL; }
+    if (g_titleFont) { DeleteObject(g_titleFont); g_titleFont = NULL; }
+    for (auto& brush : g_materialBrushes) {
+        if (brush) {
+            DeleteObject(brush);
+            brush = NULL;
+        }
+    }
+}
 
 // RatGame.cpp (poner junto a otros helpers/globals)
 static void LoadSkyForCurrentLevel() {
@@ -235,6 +284,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // inicializar texturas/materials
     InitMaterialTextures(g_texMgr);
 
+    g_bullets.reserve(256);
+    g_entities.reserve(128);
+    g_pickups.reserve(128);
+
+    InitRenderResources();
+
     // mostrar mensaje si faltan texturas (antes de iniciar el juego)
     g_texMgr.ReportMissingTextures(g_hWnd);
     // Inicializar GameUI (ya no queremos crear child BUTTONs nativos)
@@ -277,6 +332,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     // cleanup GDI
     if (g_backDC) { DeleteDC(g_backDC); g_backDC = NULL; }
     if (g_backBmp) { DeleteObject(g_backBmp); g_backBmp = NULL; }
+    ShutdownRenderResources();
     g_gameUI.Shutdown();
     Gdiplus::GdiplusShutdown(gdiPlusToken);
     return res;
@@ -519,10 +575,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) 
 // ---------------------------------------------------
 void UpdateBullets(float dt, float groundY) {
     const float TILE = TILE_SIZE;
-    for (int i = (int)g_bullets.size() - 1; i >= 0; --i) {
+    int i = 0;
+    while (i < (int)g_bullets.size()) {
         Bullet& b = g_bullets[i];
         b.life_ms -= (int)(dt * 1000.0f);
-        if (b.life_ms <= 0) { g_bullets.erase(g_bullets.begin() + i); continue; }
+        if (b.life_ms <= 0) {
+            g_bullets[i] = g_bullets.back();
+            g_bullets.pop_back();
+            continue;
+        }
 
         b.pos.x += b.vel.x * dt;
         b.pos.y += b.vel.y * dt;
@@ -531,7 +592,8 @@ void UpdateBullets(float dt, float groundY) {
         if (g_currentLevel) {
             if (g_currentLevel->IsSolidAtWorld(b.pos.x, b.pos.y, TILE)) {
                 // impacto contra tile: borrar bala (podrías spawnear partículas/sonido aquí)
-                g_bullets.erase(g_bullets.begin() + i);
+                g_bullets[i] = g_bullets.back();
+                g_bullets.pop_back();
                 continue;
             }
         }
@@ -546,7 +608,8 @@ void UpdateBullets(float dt, float groundY) {
                 int dmg = b.damage;
                 if (dmg <= 0) dmg = 8;
                 g_player.ApplyDamage(dmg, b.pos);
-                g_bullets.erase(g_bullets.begin() + i);
+                g_bullets[i] = g_bullets.back();
+                g_bullets.pop_back();
                 continue;
             }
         }
@@ -564,20 +627,22 @@ void UpdateBullets(float dt, float groundY) {
                     int dmg = b.damage;
                     if (dmg <= 0) dmg = 10;
                     e->ApplyDamage(dmg, b.pos);
-                    g_bullets.erase(g_bullets.begin() + i);
+                    g_bullets[i] = g_bullets.back();
+                    g_bullets.pop_back();
                     goto NEXT_BULLET;
                 }
             }
         }
 
     NEXT_BULLET:
-        // quitar si cae muy abajo (fuera del mundo). groundY ahora suele venir del nivel o fallback.
         if (i < (int)g_bullets.size()) {
             if (g_bullets[i].pos.y > groundY + 400.0f) {
-                g_bullets.erase(g_bullets.begin() + i);
+                g_bullets[i] = g_bullets.back();
+                g_bullets.pop_back();
                 continue;
             }
         }
+        ++i;
     }
 }
 
@@ -605,10 +670,8 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
         g_texMgr.Draw(g_skyBmp, buf, 0, 0, g_clientW, g_clientH);
     }
     else {
-        HBRUSH bg = CreateSolidBrush(RGB(20, 28, 40));
         RECT rc = { 0,0,g_clientW,g_clientH };
-        FillRect(buf, &rc, bg);
-        DeleteObject(bg);
+        FillRect(buf, &rc, g_backgroundBrush);
     }
 
     // Si hay un panel modal creado por GameUI, no dibujamos el mundo
@@ -637,73 +700,70 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
     if (g_inGame) {
         // TILE/worldGroundY coherentes con RunGameLoop
         const float TILE = TILE_SIZE;
-        float worldGroundY = (g_currentLevel) ? (g_currentLevel->height * TILE) : (float)g_clientH;
-
-        int winGroundY = (int)(worldGroundY - camY);
-
-        // Ground (fondo verde)
-    //   HBRUSH ground = CreateSolidBrush(RGB(50, 100, 50));
-    //   RECT grect = { 0, winGroundY + 10, g_clientW, g_clientH };
-    //   FillRect(buf, &grect, ground);
-    //   DeleteObject(ground);
-
-        // Tile rendering usando texturas (si hay nivel)
+        // Tile rendering usando culling (si hay nivel)
         if (g_currentLevel) {
-            for (int r = 0; r < g_currentLevel->height; ++r) {
-                for (int c = 0; c < g_currentLevel->width; ++c) {
-                    char ch = g_currentLevel->TileCharAt(r, c);
-                    if (ch == '.') continue;
-                    Material m = Level::CharToMaterial(ch);
+            const int levelW = g_currentLevel->width;
+            const int levelH = g_currentLevel->height;
+            const int margin = 1;
+            int minC = std::max(0, (int)std::floor(camX / TILE) - margin);
+            int maxC = std::min(levelW - 1, (int)std::floor((camX + g_clientW) / TILE) + margin);
+            int minR = std::max(0, (int)std::floor(camY / TILE) - margin);
+            int maxR = std::min(levelH - 1, (int)std::floor((camY + g_clientH) / TILE) + margin);
 
-                    // obtener bitmap para el material
-                    Gdiplus::Bitmap* bmp = GetMaterialTexture(m);
+            std::array<Gdiplus::Bitmap*, MATERIAL_COUNT> matBmps = {};
+            for (int mi = 0; mi < MATERIAL_COUNT; ++mi) {
+                matBmps[mi] = GetMaterialTexture(static_cast<Material>(mi));
+            }
+
+            const auto& grid = g_currentLevel->materialGrid;
+            for (int r = minR; r <= maxR; ++r) {
+                int rowOffset = r * levelW;
+                int sy = (int)(r * TILE - camY);
+                for (int c = minC; c <= maxC; ++c) {
+                    Material m = grid[rowOffset + c];
+                    if (m == M_AIR) continue;
                     int sx = (int)(c * TILE - camX);
-                    int sy = (int)(r * TILE - camY);
-
+                    Gdiplus::Bitmap* bmp = matBmps[static_cast<int>(m)];
                     if (bmp) {
                         g_texMgr.Draw(bmp, buf, sx, sy, (int)TILE, (int)TILE);
                     }
                     else {
-                        MaterialInfo mi = GetMaterialInfo(m);
-                        uint32_t col = mi.color;
-                        int rr = (col >> 16) & 0xFF;
-                        int gg = (col >> 8) & 0xFF;
-                        int bb = (col) & 0xFF;
-                        HBRUSH b = CreateSolidBrush(RGB(rr, gg, bb));
                         RECT tr = { sx, sy, sx + (int)TILE, sy + (int)TILE };
-                        FillRect(buf, &tr, b);
-                        DeleteObject(b);
+                        FillRect(buf, &tr, g_materialBrushes[static_cast<int>(m)]);
                     }
                 }
             }
         }
 
         // Draw bullets (offset por la cámara)
-        HBRUSH bcol = CreateSolidBrush(RGB(255, 220, 60));
-        HGDIOBJ oldBrush = SelectObject(buf, bcol);
+        const float viewLeft = camX - 64.0f;
+        const float viewRight = camX + g_clientW + 64.0f;
+        const float viewTop = camY - 64.0f;
+        const float viewBottom = camY + g_clientH + 64.0f;
+
+        HGDIOBJ oldBrush = SelectObject(buf, g_bulletBrush);
         for (auto& b : g_bullets) {
+            if (b.pos.x < viewLeft || b.pos.x > viewRight || b.pos.y < viewTop || b.pos.y > viewBottom) continue;
             int bx = (int)(b.pos.x - camX);
             int by = (int)(b.pos.y - camY);
             Ellipse(buf, bx - 3, by - 3, bx + 3, by + 3);
         }
         SelectObject(buf, oldBrush);
-        DeleteObject(bcol);
 
         // Draw pickups (offset)
         if (g_showPickups) {
-            HBRUSH pickupBrush = CreateSolidBrush(RGB(180, 80, 20));
-            HGDIOBJ oldBrush2 = SelectObject(buf, pickupBrush);
+            HGDIOBJ oldBrush2 = SelectObject(buf, g_pickupBrush);
             for (auto& pk : g_pickups) {
+                if (pk.pos.x < viewLeft || pk.pos.x > viewRight || pk.pos.y < viewTop || pk.pos.y > viewBottom) continue;
                 RECT pr = {
                     (int)(pk.pos.x - 10 - camX),
                     (int)(pk.pos.y - 10 - camY),
                     (int)(pk.pos.x + 10 - camX),
                     (int)(pk.pos.y + 10 - camY)
                 };
-                FillRect(buf, &pr, pickupBrush);
+                FillRect(buf, &pr, g_pickupBrush);
             }
             SelectObject(buf, oldBrush2);
-            DeleteObject(pickupBrush);
         }
 
         // ------------------- Dibujado de entidades / player (coordenadas mundo usando GDI) -------------------
@@ -716,7 +776,9 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
 
         // Dibujar entidades (usando su Draw(HDC) original que espera coordenadas mundo)
         for (auto& entPtr : g_entities) {
-            if (entPtr) entPtr->Draw(buf); // firma Draw(HDC) permanece igual
+            if (!entPtr) continue;
+            if (entPtr->pos.x < viewLeft || entPtr->pos.x > viewRight || entPtr->pos.y < viewTop || entPtr->pos.y > viewBottom) continue;
+            entPtr->Draw(buf); // firma Draw(HDC) permanece igual
         }
 
         // Dibujar fallback player (GDI) en coordenadas mundo; esto funciona porque el viewport está desplazado
@@ -739,18 +801,14 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
         int hx = g_clientW - healthBarW - (int)(10.0f * g_uiScale);
         int hy = (int)(10.0f * g_uiScale);
         RECT hbBack = { hx, hy, hx + healthBarW, hy + healthBarH };
-        HBRUSH backBrush = CreateSolidBrush(RGB(40, 40, 40));
-        FillRect(buf, &hbBack, backBrush);
-        DeleteObject(backBrush);
+        FillRect(buf, &hbBack, g_healthBackBrush);
 
         float hpPct = (float)g_player.health / (float)g_player.maxHealth;
         if (hpPct < 0.0f) hpPct = 0.0f;
         else if (hpPct > 1.0f) hpPct = 1.0f;
         int fillW = (int)(healthBarW * hpPct);
         RECT hbFill = { hx, hy, hx + fillW, hy + healthBarH };
-        HBRUSH fillBrush = CreateSolidBrush(RGB(200, 40, 40));
-        FillRect(buf, &hbFill, fillBrush);
-        DeleteObject(fillBrush);
+        FillRect(buf, &hbFill, g_healthFillBrush);
 
         // texto de % / HP
         wchar_t hpText[64];
@@ -804,15 +862,10 @@ void RenderFrame(HDC hdc, const Vec2& camOffset) {
         // Menu drawing (no camera offset)
         SetTextColor(buf, RGB(240, 240, 240));
         SetBkMode(buf, TRANSPARENT);
-        HFONT hTitle = CreateFontW(
-            (int)(60.0f * g_uiScale), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_OUTLINE_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY,
-            DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-        HFONT oldF = (HFONT)SelectObject(buf, hTitle);
+        HFONT oldF = (HFONT)SelectObject(buf, g_titleFont);
         RECT tr = { 0, 40, g_clientW, 140 };
         DrawTextW(buf, L"RAT GAME", -1, &tr, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
         SelectObject(buf, oldF);
-        DeleteObject(hTitle);
 
         RECT sub = { 0, 120, g_clientW, 180 };
         DrawTextW(buf, L"Press Start to begin", -1, &sub, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
@@ -880,7 +933,8 @@ int RunGameLoop() {
 
             // Llamamos UpdateMovement: si no hay level, worldGroundY = NO_GROUND_Y -> no suelo.
             // (asumimos que UpdateMovement aplica controles horizontales y gravedad usando el groundY comparado)
-            UpdateMovement(g_player, g_input, dt, g_clientW, worldGroundY, playerNewBullets);
+            const float worldWidth = (g_currentLevel) ? (g_currentLevel->width * TILE) : (float)g_clientW;
+            UpdateMovement(g_player, g_input, dt, (int)worldWidth, worldGroundY, playerNewBullets);
 
             // registrar balas del jugador
             for (auto& b : playerNewBullets) {
@@ -895,6 +949,10 @@ int RunGameLoop() {
 
             // Update entities (pueden generar balas propias)
             std::vector<Bullet> entNewBullets;
+            for (auto& entPtr : g_entities) {
+                if (!entPtr) continue;
+                entPtr->Update(dt, g_player, entNewBullets);
+            }
             // Simple entity-vs-entity separation (run after entity updates)
             for (size_t i = 0; i < g_entities.size(); ++i) {
                 for (size_t j = i + 1; j < g_entities.size(); ++j) {
@@ -939,73 +997,73 @@ int RunGameLoop() {
             if (g_currentLevel) {
                 // dt (segundos) lo calculas arriba; aquí lo pasamos
                 g_player.ResolveTileCollisions(dt);
-            }
-            else {
-                g_player.onGround = false;
-            }
 
-            float left = g_player.pos.x - pr;
-            float right = g_player.pos.x + pr;
-            float top = g_player.pos.y - pr;
-            float bottom = g_player.pos.y + pr;
+                float left = g_player.pos.x - pr;
+                float right = g_player.pos.x + pr;
+                float top = g_player.pos.y - pr;
+                float bottom = g_player.pos.y + pr;
 
-            int minC = std::max(0, (int)std::floor(left / TILE));
-            int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
-            int minR = std::max(0, (int)std::floor(top / TILE));
-            int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
+                int minC = std::max(0, (int)std::floor(left / TILE));
+                int maxC = std::min(g_currentLevel->width - 1, (int)std::floor(right / TILE));
+                int minR = std::max(0, (int)std::floor(top / TILE));
+                int maxR = std::min(g_currentLevel->height - 1, (int)std::floor(bottom / TILE));
 
-            for (int r = minR; r <= maxR; ++r) {
-                for (int c = minC; c <= maxC; ++c) {
-                    Material mat = g_currentLevel->TileMaterial(r, c);
-                    MaterialInfo mi = GetMaterialInfo(mat);
-                    if (!mi.solid) continue;
+                for (int r = minR; r <= maxR; ++r) {
+                    for (int c = minC; c <= maxC; ++c) {
+                        Material mat = g_currentLevel->TileMaterial(r, c);
+                        MaterialInfo mi = GetMaterialInfo(mat);
+                        if (!mi.solid) continue;
 
-                    float tileL = c * TILE;
-                    float tileR = (c + 1) * TILE;
-                    float tileT = r * TILE;
-                    float tileB = (r + 1) * TILE;
+                        float tileL = c * TILE;
+                        float tileR = (c + 1) * TILE;
+                        float tileT = r * TILE;
+                        float tileB = (r + 1) * TILE;
 
-                    float prevLeft = prevPos.x - pr;
-                    float prevRight = prevPos.x + pr;
-                    float prevTop = prevPos.y - pr;
-                    float prevBottom = prevPos.y + pr;
+                        float prevLeft = prevPos.x - pr;
+                        float prevRight = prevPos.x + pr;
+                        float prevTop = prevPos.y - pr;
+                        float prevBottom = prevPos.y + pr;
 
-                    left = g_player.pos.x - pr;
-                    right = g_player.pos.x + pr;
-                    top = g_player.pos.y - pr;
-                    bottom = g_player.pos.y + pr;
+                        left = g_player.pos.x - pr;
+                        right = g_player.pos.x + pr;
+                        top = g_player.pos.y - pr;
+                        bottom = g_player.pos.y + pr;
 
-                    // vertical collision (desde arriba)
-                    if (prevBottom <= tileT && bottom >= tileT) {
-                        g_player.pos.y = tileT - pr - 0.01f;
-                        g_player.vel.y = 0.0f;
-                        g_player.onGround = true;
-                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
-                    }
-                    // techo
-                    else if (prevTop >= tileB && top <= tileB) {
-                        g_player.pos.y = tileB + pr + 0.01f;
-                        g_player.vel.y = 0.0f;
-                        top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
-                    }
-
-                    // colisión horizontal derecha
-                    if (prevRight <= tileL && right >= tileL) {
-                        if (!(bottom <= tileT || top >= tileB)) {
-                            g_player.pos.x = tileL - pr - 0.01f;
-                            g_player.vel.x = 0.0f;
-                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                        // vertical collision (desde arriba)
+                        if (prevBottom <= tileT && bottom >= tileT) {
+                            g_player.pos.y = tileT - pr - 0.01f;
+                            g_player.vel.y = 0.0f;
+                            g_player.onGround = true;
+                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
                         }
-                    }
-                    // izquierda
-                    else if (prevLeft >= tileR && left <= tileR) {
-                        if (!(bottom <= tileT || top >= tileB)) {
-                            g_player.pos.x = tileR + pr + 0.01f;
-                            g_player.vel.x = 0.0f;
-                            left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                        // techo
+                        else if (prevTop >= tileB && top <= tileB) {
+                            g_player.pos.y = tileB + pr + 0.01f;
+                            g_player.vel.y = 0.0f;
+                            top = g_player.pos.y - pr; bottom = g_player.pos.y + pr;
+                        }
+
+                        // colisión horizontal derecha
+                        if (prevRight <= tileL && right >= tileL) {
+                            if (!(bottom <= tileT || top >= tileB)) {
+                                g_player.pos.x = tileL - pr - 0.01f;
+                                g_player.vel.x = 0.0f;
+                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                            }
+                        }
+                        // izquierda
+                        else if (prevLeft >= tileR && left <= tileR) {
+                            if (!(bottom <= tileT || top >= tileB)) {
+                                g_player.pos.x = tileR + pr + 0.01f;
+                                g_player.vel.x = 0.0f;
+                                left = g_player.pos.x - pr; right = g_player.pos.x + pr;
+                            }
                         }
                     }
                 }
+            }
+            else {
+                g_player.onGround = false;
             }
 
 

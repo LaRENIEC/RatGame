@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <tuple>
 #include "player.h"
+#include "Tile.h"
 
 #ifdef _WIN32
 #  include <windows.h>
@@ -12,31 +13,13 @@
 #  include <dirent.h>
 #endif
 
-// Material como enum no-scoped
-enum Material {
-    M_AIR = 0,
-    M_GRASS,
-    M_SAND,
-    M_DIRT,
-    M_GRAVEL,
-    M_WATER,
-    M_SPIKES,
-    M_UNKNOWN
-};
-
-struct MaterialInfo {
-    const char* name;
-    bool solid;        // bloque que colisiona
-    float friction;    // 0..1 multiplicador para movimiento
-    uint32_t color;    // 0xRRGGBB para render simple
-};
-constexpr float TILE_SIZE = 48.0f; // <- aquí cambias el tamaño; antes era 32.0f
+constexpr float TILE_SIZE = 48.0f; // <- aquÃ­ cambias el tamaÃ±o; antes era 32.0f
 struct LevelObject {
     char tag = '.';
     int row = 0;
     int col = 0;
 
-    // devuelve posición world centrada en el tile
+    // devuelve posiciÃ³n world centrada en el tile
     inline float WorldX(float tileSize = TILE_SIZE) const { return col * tileSize + tileSize * 0.5f; }
     inline float WorldY(float tileSize = TILE_SIZE) const { return row * tileSize + tileSize * 0.5f; }
 };
@@ -44,7 +27,7 @@ class Level {
 public:
     Level() = default;
     virtual ~Level() = default;
-    // ----- límites globales para evitar mapas "infinitos" -----
+    // ----- lÃ­mites globales para evitar mapas "infinitos" -----
 // puedes ajustar a lo que quieras; valores recomendados
 // ancho grande (mapas largos) y altura moderada.
     static constexpr int MAX_WIDTH = 2048;
@@ -62,7 +45,7 @@ public:
     int height = 0;
     std::vector<std::string> tiles;      // raw chars: tiles[row][col]
     std::vector<Material> materialGrid;  // row-major: materialGrid[r*width + c]
-    std::string sky; // si vacío, usar sky por defecto o color sólido
+    std::string sky; // si vacÃ­o, usar sky por defecto o color sÃ³lido
     float spawnX = -1.0f;
     float spawnY = -1.0f;
 
@@ -119,4 +102,3 @@ public:
 
 extern std::unique_ptr<Level> g_currentLevel;
 
-MaterialInfo GetMaterialInfo(Material m);
